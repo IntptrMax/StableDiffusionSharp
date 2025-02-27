@@ -5,13 +5,13 @@ using static TorchSharp.torch.nn;
 
 namespace StableDiffusionSharp
 {
-	public class Clip
+	internal class Clip
 	{
 		private class CLIPEmbedding : Module<Tensor, Tensor>
 		{
-			internal readonly Embedding token_embedding;
-			internal readonly Embedding position_embedding;
-			internal CLIPEmbedding(long n_vocab, long n_embd, long n_token) : base(nameof(CLIPEmbedding))
+			private readonly Embedding token_embedding;
+			private readonly Embedding position_embedding;
+			public CLIPEmbedding(long n_vocab, long n_embd, long n_token) : base(nameof(CLIPEmbedding))
 			{
 				token_embedding = Embedding(n_vocab, n_embd);
 				position_embedding = Embedding(n_token, n_embd);
@@ -26,12 +26,12 @@ namespace StableDiffusionSharp
 
 		private class CLIPLayer : Module<Tensor, Tensor>
 		{
-			internal readonly LayerNorm layer_norm1;
-			internal readonly LayerNorm layer_norm2;
-			internal readonly CLIPAttention self_attn;
-			internal readonly Mlp mlp;
+			private readonly LayerNorm layer_norm1;
+			private readonly LayerNorm layer_norm2;
+			private readonly CLIPAttention self_attn;
+			private readonly Mlp mlp;
 
-			internal CLIPLayer(long n_head, long embed_dim, long intermediate_size, Activations activations = Activations.QuickGELU) : base(nameof(CLIPLayer))
+			public CLIPLayer(long n_head, long embed_dim, long intermediate_size, Activations activations = Activations.QuickGELU) : base(nameof(CLIPLayer))
 			{
 				layer_norm1 = LayerNorm(embed_dim);
 				self_attn = new CLIPAttention(embed_dim, n_head);
@@ -189,7 +189,7 @@ namespace StableDiffusionSharp
 			}
 		}
 
-		public class Cliper : Module<Tensor, Tensor>
+		internal class Cliper : Module<Tensor, Tensor>
 		{
 			internal Sequential cond_stage_model;
 			public Cliper(long n_vocab = 49408, long n_token = 77, long n_heads = 12, long embed_dim = 768, long intermediate_size = 768 * 4) : base(nameof(Cliper))

@@ -295,7 +295,7 @@ namespace StableDiffusionSharp.ModelLoader
 			//return data;
 		}
 
-		public static Dictionary<string, TorchSharp.torch.Tensor> Load(string fileName)
+		internal static Dictionary<string, TorchSharp.torch.Tensor> Load(string fileName)
 		{
 			Dictionary<string, TorchSharp.torch.Tensor> tensors = new Dictionary<string, TorchSharp.torch.Tensor>();
 			List<TensorInfo> tensorInfos = ReadTensorsInfoFromFile(fileName);

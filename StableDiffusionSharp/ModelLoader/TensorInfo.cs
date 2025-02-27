@@ -1,6 +1,6 @@
 ﻿namespace StableDiffusionSharp.ModelLoader
 {
-	public class TensorInfo
+	internal class TensorInfo
 	{
 		public string Name { get; set; }
 		public TorchSharp.torch.ScalarType Type { get; set; } = TorchSharp.torch.ScalarType.Float16;

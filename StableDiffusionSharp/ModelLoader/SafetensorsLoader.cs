@@ -3,7 +3,7 @@ using System.Text;
 
 namespace StableDiffusionSharp.ModelLoader
 {
-	public class SafetensorsLoader
+	internal class SafetensorsLoader
 	{
 		private static List<TensorInfo> ReadTensorsInfoFromFile(string inputFileName)
 		{
@@ -106,7 +106,7 @@ namespace StableDiffusionSharp.ModelLoader
 			return ReadByteFromFile(inputFileName, bodyPosition, (long)offset, size);
 		}
 
-		public static Dictionary<string, TorchSharp.torch.Tensor> Load(string fileName)
+		internal static Dictionary<string, TorchSharp.torch.Tensor> Load(string fileName)
 		{
 			Dictionary<string, TorchSharp.torch.Tensor> tensors = new Dictionary<string, TorchSharp.torch.Tensor>();
 			List<TensorInfo> tensorInfos = ReadTensorsInfoFromFile(fileName);

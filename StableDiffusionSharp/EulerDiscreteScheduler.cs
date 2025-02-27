@@ -3,7 +3,7 @@ using static TorchSharp.torch;
 
 namespace StableDiffusionSharp
 {
-	public class EulerDiscreteScheduler
+	internal class EulerDiscreteScheduler
 	{
 		private long num_train_timesteps_;
 		private int steps_offset_;
@@ -14,7 +14,7 @@ namespace StableDiffusionSharp
 		public Tensor timesteps_;
 		private long num_inference_steps_;
 
-		public EulerDiscreteScheduler(long num_train_timesteps = 1000, float beta_start = 0.00085f, float beta_end = 0.012f, int steps_offset = 1)
+		internal EulerDiscreteScheduler(long num_train_timesteps = 1000, float beta_start = 0.00085f, float beta_end = 0.012f, int steps_offset = 1)
 		{
 			num_train_timesteps_ = num_train_timesteps;
 			steps_offset_ = steps_offset;
@@ -26,12 +26,12 @@ namespace StableDiffusionSharp
 			timesteps_ = torch.linspace(0, num_train_timesteps - 1, num_train_timesteps_).flip(0);
 		}
 
-		public Tensor InitNoiseSigma()
+		internal Tensor InitNoiseSigma()
 		{
 			return torch.pow(torch.pow(sigmas_.max(), 2) + 1, 0.5f);
 		}
 
-		public Tensor ScaleModelInput(Tensor sample, Tensor timestep)
+		internal Tensor ScaleModelInput(Tensor sample, Tensor timestep)
 		{
 			var step_index = (timesteps_ == timestep).nonzero().ToInt64();
 			var sigma = sigmas_[step_index].ToSingle();
@@ -39,7 +39,7 @@ namespace StableDiffusionSharp
 			return sample;
 		}
 
-		public void SetTimesteps(long num_inference_steps, torch.Device device)
+		internal void SetTimesteps(long num_inference_steps, torch.Device device)
 		{
 			num_inference_steps_ = num_inference_steps;
 			long step_ratio = num_train_timesteps_ / num_inference_steps_;
@@ -51,7 +51,7 @@ namespace StableDiffusionSharp
 			timesteps_ = timesteps;
 		}
 
-		public Tensor Step(Tensor model_output, Tensor timestep, Tensor sample)
+		internal Tensor Step(Tensor model_output, Tensor timestep, Tensor sample)
 		{
 			var step_index = (timesteps_ == timestep).nonzero().ToInt64();
 			var sigma = sigmas_[step_index].ToSingle();

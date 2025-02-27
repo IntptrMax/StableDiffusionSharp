@@ -5,7 +5,7 @@ using static TorchSharp.torch.nn;
 
 namespace StableDiffusionSharp
 {
-	public class VAE
+	internal class VAE
 	{
 		private static GroupNorm Normalize(int in_channels, int num_groups = 32)
 		{
@@ -340,7 +340,7 @@ namespace StableDiffusionSharp
 			}
 		}
 
-		public class Decoder : Module<Tensor, Tensor>
+		internal class Decoder : Module<Tensor, Tensor>
 		{
 			private Sequential first_stage_model;
 			public Decoder(int z_channels = 4) : base(nameof(Decoder))
@@ -356,7 +356,7 @@ namespace StableDiffusionSharp
 			}
 		}
 
-		public class Encoder : Module<Tensor, Tensor>
+		internal class Encoder : Module<Tensor, Tensor>
 		{
 			private Sequential first_stage_model;
 			public Encoder() : base(nameof(Encoder))

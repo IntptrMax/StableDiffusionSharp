@@ -4,9 +4,18 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <Title>StableDiffusionSharp</Title>
+    <Authors>IntptrMax</Authors>
+    <Company />
+    <Product></Product>
+    <Description>Use Stable Diffusion with C# with fast speed and less VRAM.
+Requires reference to one of libtorch-cpu, libtorch-cuda-12.1, libtorch-cuda-12.1-win-x64 or libtorch-cuda-12.1-linux-x64 version 2.5.1.0 to execute.</Description>
+    <PackageProjectUrl>https://github.com/IntptrMax/StableDiffusionSharp</PackageProjectUrl>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Magick.NET-Q8-x64" Version="14.5.0" />
     <PackageReference Include="Microsoft.ML.Tokenizers" Version="1.0.2" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="TorchSharp" Version="0.105.0" />
@@ -14,16 +23,25 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Models\Clip\" />
-  </ItemGroup>
+    <None Include="..\LICENSE.txt">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+ </ItemGroup>
+
 
   <ItemGroup>
-    <None Update="Models\Clip\merges.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    <None Update="Properties\Models\Clip\merges.txt">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
     </None>
-    <None Update="Models\Clip\vocab.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    <None Update="Properties\Models\Clip\vocab.json">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
     </None>
   </ItemGroup>
+
 
 </Project>

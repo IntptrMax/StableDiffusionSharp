@@ -5,7 +5,7 @@ using static TorchSharp.torch.nn;
 
 namespace StableDiffusionSharp
 {
-	public class Diffusion : Module<Tensor, Tensor, Tensor, Tensor>
+	internal class Diffusion : Module<Tensor, Tensor, Tensor, Tensor>
 	{
 		private class SelfAttention : Module<Tensor, Tensor>
 		{
