@@ -12,7 +12,26 @@
 Requires reference to one of libtorch-cpu, libtorch-cuda-12.1, libtorch-cuda-12.1-win-x64 or libtorch-cuda-12.1-linux-x64 version 2.5.1.0 to execute.</Description>
     <PackageProjectUrl>https://github.com/IntptrMax/StableDiffusionSharp</PackageProjectUrl>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <Version>1.0.1</Version>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="Models\Clip\merges.txt" />
+    <None Remove="Models\Clip\vocab.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Models\Clip\merges.txt">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Models\Clip\vocab.json">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </EmbeddedResource>
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Magick.NET-Q8-x64" Version="14.5.0" />
@@ -28,20 +47,6 @@ Requires reference to one of libtorch-cpu, libtorch-cuda-12.1, libtorch-cuda-12.
       <PackagePath>\</PackagePath>
     </None>
  </ItemGroup>
-
-
-  <ItemGroup>
-    <None Update="Properties\Models\Clip\merges.txt">
-      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
-      <Pack>True</Pack>
-      <PackagePath>\</PackagePath>
-    </None>
-    <None Update="Properties\Models\Clip\vocab.json">
-      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
-      <Pack>True</Pack>
-      <PackagePath>\</PackagePath>
-    </None>
-  </ItemGroup>
 
 
 </Project>

@@ -1,5 +1,5 @@
 ﻿using Microsoft.ML.Tokenizers;
-using StableDiffusionSharp.Properties;
+using System.Reflection;
 using TorchSharp;
 using static TorchSharp.torch;
 
@@ -20,8 +20,21 @@ namespace StableDiffusionSharp
 				{
 					Directory.CreateDirectory(path);
 				}
-				byte[] vocabBytes = (byte[])Resources.ResourceManager.GetObject("vocab.json");
-				File.WriteAllBytes(vocabPath, vocabBytes);
+				Assembly _assembly = Assembly.GetExecutingAssembly();
+				string resourceName = "StableDiffusionSharp.Models.Clip.vocab.json";
+				using (Stream stream = _assembly.GetManifestResourceStream(resourceName))
+				{
+					if (stream == null)
+					{
+						Console.WriteLine("Resource can't find!");
+						return;
+					}
+					using (FileStream fileStream = new FileStream(vocabPath, FileMode.Create, FileAccess.Write))
+					{
+						stream.CopyTo(fileStream);
+					}
+				}
+
 			}
 
 			if (!File.Exists(mergesPath))
@@ -31,10 +44,22 @@ namespace StableDiffusionSharp
 				{
 					Directory.CreateDirectory(path);
 				}
-				byte[] mergesBytes = (byte[])Resources.ResourceManager.GetObject("merges.txt");
-				File.WriteAllBytes(mergesPath, mergesBytes);
-			}
+				Assembly _assembly = Assembly.GetExecutingAssembly();
+				string resourceName = "StableDiffusionSharp.Models.Clip.merges.txt";
+				using (Stream stream = _assembly.GetManifestResourceStream(resourceName))
+				{
+					if (stream == null)
+					{
+						Console.WriteLine("Resource can't find!");
+						return;
+					}
+					using (FileStream fileStream = new FileStream(mergesPath, FileMode.Create, FileAccess.Write))
+					{
+						stream.CopyTo(fileStream);
+					}
+				}
 
+			}
 
 			_tokenizer = BpeTokenizer.Create(vocabPath, mergesPath, endOfWordSuffix: "</w>");
 			_startToken = startToken;

@@ -7,6 +7,26 @@ namespace StableDiffusionSharp
 {
 	public class StableDiffusion
 	{
+		public class StepEventArgs : EventArgs
+		{
+			public int CurrentStep { get; }
+			public int TotalSteps { get; }
+
+			public StepEventArgs(int currentStep, int totalSteps)
+			{
+				CurrentStep = currentStep;
+				TotalSteps = totalSteps;
+			}
+		}
+
+
+		public event EventHandler<StepEventArgs> StepProgress;
+		protected virtual void OnStepProgress(int currentStep, int totalSteps)
+		{
+			StepProgress?.Invoke(this, new StepEventArgs(currentStep, totalSteps));
+		}
+
+
 		private Clip.Cliper cliper;
 		private Diffusion diffusion;
 		private VAE.Decoder decoder;
@@ -157,6 +177,7 @@ namespace StableDiffusionSharp
 					var output_uncond = ret[1];
 					output = cfg * (output_cond - output_uncond) + output_uncond;
 					latents = sampler.Step(output, timestep, latents);
+					//OnStepProgress(i + 1, steps);
 				}
 				Console.WriteLine($"end steps");
 				Console.WriteLine($"begin decoder");
@@ -183,7 +204,6 @@ namespace StableDiffusionSharp
 
 
 		}
-
 
 	}
 
