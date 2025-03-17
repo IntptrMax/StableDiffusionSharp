@@ -15,14 +15,14 @@ namespace StableDiffusionSharp
 		{
 			if (!File.Exists(vocabPath))
 			{
-				string path = Path.GetDirectoryName(vocabPath);
+				string path = Path.GetDirectoryName(vocabPath)!;
 				if (!Directory.Exists(path))
 				{
 					Directory.CreateDirectory(path);
 				}
 				Assembly _assembly = Assembly.GetExecutingAssembly();
 				string resourceName = "StableDiffusionSharp.Models.Clip.vocab.json";
-				using (Stream stream = _assembly.GetManifestResourceStream(resourceName))
+				using (Stream stream = _assembly.GetManifestResourceStream(resourceName)!)
 				{
 					if (stream == null)
 					{
@@ -39,14 +39,14 @@ namespace StableDiffusionSharp
 
 			if (!File.Exists(mergesPath))
 			{
-				string path = Path.GetDirectoryName(mergesPath);
+				string path = Path.GetDirectoryName(mergesPath)!;
 				if (!Directory.Exists(path))
 				{
 					Directory.CreateDirectory(path);
 				}
 				Assembly _assembly = Assembly.GetExecutingAssembly();
 				string resourceName = "StableDiffusionSharp.Models.Clip.merges.txt";
-				using (Stream stream = _assembly.GetManifestResourceStream(resourceName))
+				using (Stream stream = _assembly.GetManifestResourceStream(resourceName)!)
 				{
 					if (stream == null)
 					{

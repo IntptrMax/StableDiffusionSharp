@@ -95,7 +95,7 @@ namespace StableDiffusionSharp
 					k = k.view(b, 1, h * w, c).contiguous();
 					v = v.view(b, 1, h * w, c).contiguous();
 
-					hidden = functional.scaled_dot_product_attention(q, k, v); // scale is dim ** -0.5 per default
+					hidden = functional.scaled_dot_product_attention(q, k, v); // scale_factor is dim ** -0.5 per default
 
 					hidden = hidden.view(b, c, h, w).contiguous();
 					hidden = proj_out.forward(hidden);
@@ -174,9 +174,12 @@ namespace StableDiffusionSharp
 			private readonly Conv2d conv_out;
 			private readonly SiLU swish;
 			private readonly int block_in;
+			private readonly bool double_z;
 
-			public VAEEncoder(int ch = 128, int[]? ch_mult = null, int num_res_blocks = 2, int in_channels = 3, int z_channels = 16) : base(nameof(VAEEncoder))
+
+			public VAEEncoder(int ch = 128, int[]? ch_mult = null, int num_res_blocks = 2, int in_channels = 3, int z_channels = 16, bool double_z = true) : base(nameof(VAEEncoder))
 			{
+				this.double_z = double_z;
 				ch_mult ??= [1, 2, 4, 4];
 				this.num_resolutions = ch_mult.Length;
 				this.num_res_blocks = num_res_blocks;
@@ -222,7 +225,7 @@ namespace StableDiffusionSharp
 
 				// Output layers
 				norm_out = Normalize(block_in);
-				conv_out = Conv2d(block_in, 2 * z_channels, kernel_size: 3, stride: 1, padding: 1);
+				conv_out = Conv2d(block_in, (double_z ? 2 : 1) * z_channels, kernel_size: 3, stride: 1, padding: 1);
 				swish = SiLU(inplace: true);
 
 				RegisterComponents();
@@ -244,9 +247,7 @@ namespace StableDiffusionSharp
 				h = norm_out.forward(h);
 				h = swish.forward(h);
 				h = conv_out.forward(h);
-
 				return h.MoveToOuterDisposeScope();
-
 			}
 		}
 
@@ -343,25 +344,26 @@ namespace StableDiffusionSharp
 		internal class Decoder : Module<Tensor, Tensor>
 		{
 			private Sequential first_stage_model;
-			public Decoder(int z_channels = 4) : base(nameof(Decoder))
+
+			public Decoder(int embed_dim = 4, int z_channels = 4) : base(nameof(Decoder))
 			{
-				first_stage_model = Sequential(("post_quant_conv", Conv2d(z_channels, z_channels, 1)), ("decoder", new VAEDecoder(z_channels: z_channels)));
+				first_stage_model = Sequential(("post_quant_conv", Conv2d(embed_dim, z_channels, 1)), ("decoder", new VAEDecoder(z_channels: z_channels)));
 				RegisterComponents();
 			}
 
 			public override Tensor forward(Tensor latents)
 			{
-				Tensor output = latents / 0.18215f;
-				return first_stage_model.forward(output);
+				return first_stage_model.forward(latents);
 			}
 		}
 
 		internal class Encoder : Module<Tensor, Tensor>
 		{
 			private Sequential first_stage_model;
-			public Encoder() : base(nameof(Encoder))
+			public Encoder(int embed_dim = 4, int z_channels = 4, bool double_z = true) : base(nameof(Encoder))
 			{
-				first_stage_model = Sequential(("encoder", new VAEEncoder()));
+				int factor = double_z ? 2 : 1;
+				first_stage_model = Sequential(("encoder", new VAEEncoder(z_channels: z_channels)), ("quant_conv", Conv2d(factor * embed_dim, factor * z_channels, 1)));
 				RegisterComponents();
 			}
 

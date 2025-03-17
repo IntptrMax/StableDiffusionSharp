@@ -146,7 +146,7 @@ namespace StableDiffusionSharp
 					Tensor hidden = x;
 					hidden = in_layers.forward(hidden);
 
-					if (!Equals(time, null))
+					if (time is not null)
 					{
 						time = this.emb_layers.forward(time);
 						hidden = hidden + time.unsqueeze(-1).unsqueeze(-1);
@@ -260,7 +260,7 @@ namespace StableDiffusionSharp
 			public override Tensor forward(Tensor x)
 			{
 				var output = torch.nn.functional.interpolate(x, scale_factor: [2.0, 2.0], mode: InterpolationMode.Nearest);
-				if (this.with_conv && this.conv != null)
+				if (this.with_conv && this.conv is not null)
 				{
 					output = this.conv.forward(output);
 				}
@@ -344,7 +344,7 @@ namespace StableDiffusionSharp
 		private class UNet : Module<Tensor, Tensor, Tensor, Tensor>
 		{
 			private readonly int ch;
-			private readonly int temb_ch;
+			private readonly int time_embed_dim;
 			private readonly int in_channels;
 			private readonly bool use_timestep;
 
@@ -354,50 +354,90 @@ namespace StableDiffusionSharp
 			private readonly ModuleList<SwitchSequential> output_blocks;
 			private readonly Sequential @out;
 
-			public UNet(int ch, int in_channels, float dropout = 0.0f, bool use_timestep = true) : base(nameof(UNet))
+			public UNet(int model_channels, int in_channels, int[]? channel_mult = null, int num_res_blocks = 2, int context_dim = 768, int num_heads = 8, float dropout = 0.0f, bool use_timestep = true) : base(nameof(UNet))
 			{
-				this.ch = ch;
-				this.temb_ch = this.ch * 4;
+				channel_mult = channel_mult ?? [1, 2, 4, 4];
+
+				this.ch = model_channels;
+				this.time_embed_dim = model_channels * 4;
 				this.in_channels = in_channels;
 				this.use_timestep = use_timestep;
+
+				List<int> input_block_channels = [model_channels];
+
 				if (use_timestep)
 				{
 					// timestep embedding
-					this.time_embed = Sequential([torch.nn.Linear(ch, temb_ch), SiLU(), torch.nn.Linear(temb_ch, temb_ch)]);
+					this.time_embed = Sequential([torch.nn.Linear(model_channels, time_embed_dim), SiLU(), torch.nn.Linear(time_embed_dim, time_embed_dim)]);
 				}
 
 				// downsampling
 				this.input_blocks = new ModuleList<SwitchSequential>();
 				input_blocks.Add(new SwitchSequential(Conv2d(in_channels, this.ch, kernel_size: 3, padding: 1)));
-				input_blocks.Add(new SwitchSequential(new ResnetBlock(320, 320), new AttenGroup(320, drop_out: dropout)));
-				input_blocks.Add(new SwitchSequential(new ResnetBlock(320, 320), new AttenGroup(320, drop_out: dropout)));
-				input_blocks.Add(new SwitchSequential(Sequential(("op", Conv2d(320, 320, 3, stride: 2, padding: 1)))));
-				input_blocks.Add(new SwitchSequential(new ResnetBlock(320, 640), new AttenGroup(640, drop_out: dropout)));
-				input_blocks.Add(new SwitchSequential(new ResnetBlock(640, 640), new AttenGroup(640, drop_out: dropout)));
-				input_blocks.Add(new SwitchSequential(Sequential(("op", Conv2d(640, 640, 3, stride: 2, padding: 1)))));
-				input_blocks.Add(new SwitchSequential(new ResnetBlock(640, 1280), new AttenGroup(1280, drop_out: dropout)));
-				input_blocks.Add(new SwitchSequential(new ResnetBlock(1280, 1280), new AttenGroup(1280, drop_out: dropout)));
-				input_blocks.Add(new SwitchSequential(Sequential(("op", Conv2d(1280, 1280, 3, stride: 2, padding: 1)))));
-				input_blocks.Add(new SwitchSequential(new ResnetBlock(1280, 1280)));
-				input_blocks.Add(new SwitchSequential(new ResnetBlock(1280, 1280)));
 
-				middle_block = new SwitchSequential(new ResnetBlock(1280, 1280), new AttenGroup(1280, drop_out: dropout), new ResnetBlock(1280, 1280));
+				for (int i = 0; i < channel_mult.Length; i++)
+				{
+					int in_ch = model_channels * channel_mult[i > 0 ? i - 1 : i];
+					int out_ch = model_channels * channel_mult[i];
 
+					for (int j = 0; j < num_res_blocks; j++)
+					{
+						input_blocks.Add(new SwitchSequential(new ResnetBlock(in_ch, out_ch, dropout, time_embed_dim), (i < channel_mult.Length - 1) ? new AttenGroup(out_ch, num_heads, context_dim, dropout) : Identity()));
+						input_block_channels.Add(in_ch);
+						in_ch = out_ch;
+					}
+					if (i < channel_mult.Length - 1)
+					{
+						input_blocks.Add(new SwitchSequential(Sequential(("op", Conv2d(out_ch, out_ch, 3, stride: 2, padding: 1)))));
+						input_block_channels.Add(out_ch);
+					}
+				}
+
+				// middle block
+				middle_block = new SwitchSequential(new ResnetBlock(time_embed_dim, time_embed_dim, dropout, time_embed_dim), new AttenGroup(time_embed_dim, num_heads, context_dim, dropout), new ResnetBlock(1280, 1280));
+
+				var reversed_mult = channel_mult.Reverse().ToList();
+				int prev_channels = time_embed_dim;
 				this.output_blocks = new ModuleList<SwitchSequential>();
-				output_blocks.Add(new SwitchSequential(new ResnetBlock(2560, 1280)));
-				output_blocks.Add(new SwitchSequential(new ResnetBlock(2560, 1280)));
-				output_blocks.Add(new SwitchSequential(new ResnetBlock(2560, 1280), new Upsample(1280)));
-				output_blocks.Add(new SwitchSequential(new ResnetBlock(2560, 1280), new AttenGroup(1280)));
-				output_blocks.Add(new SwitchSequential(new ResnetBlock(2560, 1280), new AttenGroup(1280)));
-				output_blocks.Add(new SwitchSequential(new ResnetBlock(1920, 1280), new AttenGroup(1280), new Upsample(1280)));
-				output_blocks.Add(new SwitchSequential(new ResnetBlock(1920, 640), new AttenGroup(640)));
-				output_blocks.Add(new SwitchSequential(new ResnetBlock(1280, 640), new AttenGroup(640)));
-				output_blocks.Add(new SwitchSequential(new ResnetBlock(960, 640), new AttenGroup(640), new Upsample(640)));
-				output_blocks.Add(new SwitchSequential(new ResnetBlock(960, 320), new AttenGroup(320)));
-				output_blocks.Add(new SwitchSequential(new ResnetBlock(640, 320), new AttenGroup(320)));
-				output_blocks.Add(new SwitchSequential(new ResnetBlock(640, 320), new AttenGroup(320)));
+				for (int i = 0; i < reversed_mult.Count; i++)
+				{
+					int mult = reversed_mult[i];
+					int current_channels = model_channels * mult;
+					int down_stage_index = channel_mult.Length - 1 - i;
+					int skip_channels = model_channels * channel_mult[down_stage_index];
+					bool has_atten = i >= 1;
 
-				@out = Sequential(GroupNorm(32, ch), SiLU(), Conv2d(ch, in_channels, kernel_size: 3, padding: 1));
+					for (int j = 0; j < num_res_blocks + 1; j++)
+					{
+						int current_skip = skip_channels;
+						if (j == num_res_blocks && i < reversed_mult.Count - 1)
+						{
+							int next_down_stage_index = channel_mult.Length - 1 - (i + 1);
+							current_skip = model_channels * channel_mult[next_down_stage_index];
+						}
+
+						int input_channels = prev_channels + current_skip;
+						bool has_upsample = j == num_res_blocks && i != reversed_mult.Count - 1;
+
+						if (has_atten)
+						{
+							output_blocks.Add(new SwitchSequential(
+								new ResnetBlock(input_channels, current_channels, dropout, time_embed_dim),
+								new AttenGroup(current_channels, num_heads, context_dim, dropout),
+								(has_upsample ? new Upsample(current_channels) : Identity())));
+						}
+						else
+						{
+							output_blocks.Add(new SwitchSequential(
+								new ResnetBlock(input_channels, current_channels, dropout, time_embed_dim),
+								(has_upsample ? new Upsample(current_channels) : Identity())));
+						}
+
+						prev_channels = current_channels;
+					}
+				}
+
+				@out = Sequential(GroupNorm(32, model_channels), SiLU(), Conv2d(model_channels, in_channels, kernel_size: 3, padding: 1));
 
 				RegisterComponents();
 
@@ -427,12 +467,13 @@ namespace StableDiffusionSharp
 			}
 		}
 
+
 		private readonly ModuleList<Module<Tensor, Tensor, Tensor, Tensor>> model;
 
-		public Diffusion(int ch, int in_channels, float dropout = 0.0f, bool use_timestep = true) : base(nameof(Diffusion))
+		public Diffusion(int model_channels, int in_channels, int num_heads = 8, int context_dim = 768, float dropout = 0.0f, bool use_timestep = true) : base(nameof(Diffusion))
 		{
 			model = new ModuleList<Module<Tensor, Tensor, Tensor, Tensor>>();
-			model.add_module("diffusion_model", new UNet(ch, in_channels));
+			model.add_module("diffusion_model", new UNet(model_channels, in_channels, context_dim: context_dim, num_heads: num_heads, dropout: dropout, use_timestep: use_timestep));
 			RegisterComponents();
 		}
 
