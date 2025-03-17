@@ -208,7 +208,8 @@ namespace StableDiffusionSharp
 				Console.WriteLine("Getting latents......");
 				var latents = torch.randn([1, 4, height, width]).to(dtype, device);
 
-				BasicSampler sampler = new EulerSampler(timesteps, linear_start, linear_end, num_timesteps_cond);
+				//BasicSampler sampler = new EulerSampler(timesteps, linear_start, linear_end, num_timesteps_cond);
+				BasicSampler sampler = new EulerAncestralSampler(timesteps, linear_start, linear_end, num_timesteps_cond);
 				sampler.SetTimesteps(steps);
 				latents *= sampler.InitNoiseSigma();
 				Console.WriteLine($"begin sampling");
