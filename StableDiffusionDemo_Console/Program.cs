@@ -14,6 +14,7 @@ namespace StableDiffusionDemo_Console
 
 			SDDeviceType deviceType = SDDeviceType.CUDA;
 			SDScalarType scalarType = SDScalarType.Float16;
+			SDSamplerType samplerType = SDSamplerType.EulerAncestral;
 			int step = 20;
 			float cfg = 7.0f;
 			long seed = 0;
@@ -22,15 +23,16 @@ namespace StableDiffusionDemo_Console
 			int height = 512;
 			float strength = 0.75f;
 
+
 			StableDiffusion sd = new StableDiffusion(deviceType, scalarType);
 			Console.WriteLine("Loading model......");
 			sd.LoadModel(modelPath);
 			Console.WriteLine("Model loaded.");
 
-			ImageMagick.MagickImage t2iImage = sd.TextToImage(prompt, nprompt, width, height, step, seed, cfg);
+			ImageMagick.MagickImage t2iImage = sd.TextToImage(prompt, nprompt, width, height, step, seed, cfg, samplerType);
 			t2iImage.Write("output_t2i.png");
 
-			ImageMagick.MagickImage i2iImage = sd.ImageToImage(t2iImage, i2iPrompt, nprompt, step, strength, seed, img2imgSubSeed, cfg);
+			ImageMagick.MagickImage i2iImage = sd.ImageToImage(t2iImage, i2iPrompt, nprompt, step, strength, seed, img2imgSubSeed, cfg, samplerType);
 			i2iImage.Write("output_i2i.png");
 
 			Console.WriteLine(@"Done. Images have been saved.");

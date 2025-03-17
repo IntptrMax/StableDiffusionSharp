@@ -12,4 +12,10 @@
 		CPU = 0,
 		CUDA = 1,
 	}
+
+	public enum SDSamplerType
+	{
+		EulerAncestral = 0,
+		Euler = 1,
+	}
 }

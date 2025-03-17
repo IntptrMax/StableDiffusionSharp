@@ -173,7 +173,7 @@ namespace StableDiffusionSharp
 		/// <param name="steps">Step to generate image</param>
 		/// <param name="seed">Random seed for generating image, it will get random when the value is 0</param>
 		/// <param name="cfg">Classifier Free Guidance</param>
-		public ImageMagick.MagickImage TextToImage(string prompt, string nprompt, int width = 512, int height = 512, int steps = 20, long seed = 0, float cfg = 7.0f)
+		public ImageMagick.MagickImage TextToImage(string prompt, string nprompt, int width = 512, int height = 512, int steps = 20, long seed = 0, float cfg = 7.0f, SDSamplerType samplerType = SDSamplerType.Euler)
 		{
 			CheckModelLoaded();
 			if (steps < 1)
@@ -208,8 +208,13 @@ namespace StableDiffusionSharp
 				Console.WriteLine("Getting latents......");
 				var latents = torch.randn([1, 4, height, width]).to(dtype, device);
 
-				//BasicSampler sampler = new EulerSampler(timesteps, linear_start, linear_end, num_timesteps_cond);
-				BasicSampler sampler = new EulerAncestralSampler(timesteps, linear_start, linear_end, num_timesteps_cond);
+				BasicSampler sampler = samplerType switch
+				{
+					SDSamplerType.Euler => new EulerSampler(timesteps, linear_start, linear_end, num_timesteps_cond),
+					SDSamplerType.EulerAncestral => new EulerAncestralSampler(timesteps, linear_start, linear_end, num_timesteps_cond),
+					_ => throw new ArgumentException("Unknown sampler type")
+				};
+
 				sampler.SetTimesteps(steps);
 				latents *= sampler.InitNoiseSigma();
 				Console.WriteLine($"begin sampling");
@@ -253,7 +258,7 @@ namespace StableDiffusionSharp
 		}
 
 
-		public ImageMagick.MagickImage ImageToImage(ImageMagick.MagickImage orgImage, string prompt, string nprompt, int steps = 20, float strength = 0.75f, long seed = 0, long subSeed = 0, float cfg = 7.0f)
+		public ImageMagick.MagickImage ImageToImage(ImageMagick.MagickImage orgImage, string prompt, string nprompt, int steps = 20, float strength = 0.75f, long seed = 0, long subSeed = 0, float cfg = 7.0f,SDSamplerType samplerType = SDSamplerType.Euler)
 		{
 			CheckModelLoaded();
 
@@ -281,7 +286,14 @@ namespace StableDiffusionSharp
 
 				latents = latents * scale_factor;
 				int t_enc = (int)(strength * steps) - 1;
-				BasicSampler sampler = new EulerSampler(timesteps, linear_start, linear_end, num_timesteps_cond);
+
+				BasicSampler sampler = samplerType switch
+				{
+					SDSamplerType.Euler => new EulerSampler(timesteps, linear_start, linear_end, num_timesteps_cond),
+					SDSamplerType.EulerAncestral => new EulerAncestralSampler(timesteps, linear_start, linear_end, num_timesteps_cond),
+					_ => throw new ArgumentException("Unknown sampler type")
+				};
+
 				sampler.SetTimesteps(steps);
 				Tensor sigma_sched = sampler.Sigmas[(steps - t_enc - 1)..];
 				Tensor noise = randn_like(latents);
