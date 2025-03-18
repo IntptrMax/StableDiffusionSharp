@@ -7,6 +7,7 @@ namespace StableDiffusionDemo_Console
 		static void Main(string[] args)
 		{
 			string modelPath = @".\sunshinemix.safetensors";
+			string esrganModelPath = @".\RealESRGAN_x4plus.pth";
 			string prompt = "High quality, best quality, sunset on sea, beach, tree.";
 			string nprompt = "Bad quality, worst quality.";
 
@@ -23,7 +24,6 @@ namespace StableDiffusionDemo_Console
 			int height = 512;
 			float strength = 0.75f;
 
-
 			StableDiffusion sd = new StableDiffusion(deviceType, scalarType);
 			Console.WriteLine("Loading model......");
 			sd.LoadModel(modelPath);
@@ -34,6 +34,15 @@ namespace StableDiffusionDemo_Console
 
 			ImageMagick.MagickImage i2iImage = sd.ImageToImage(t2iImage, i2iPrompt, nprompt, step, strength, seed, img2imgSubSeed, cfg, samplerType);
 			i2iImage.Write("output_i2i.png");
+
+			sd.Dispose();
+			GC.Collect();
+
+			Console.WriteLine("Doing upscale......");
+			Esrgan esrgan = new Esrgan(deviceType: deviceType, scalarType: scalarType);
+			esrgan.LoadModel(esrganModelPath);
+			ImageMagick.MagickImage upscaleImg = esrgan.UpScale(t2iImage);
+			upscaleImg.Write("upscale.png");
 
 			Console.WriteLine(@"Done. Images have been saved.");
 		}

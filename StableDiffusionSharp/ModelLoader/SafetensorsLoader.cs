@@ -112,7 +112,7 @@ namespace StableDiffusionSharp.ModelLoader
 			List<TensorInfo> tensorInfos = ReadTensorsInfoFromFile(fileName);
 			foreach (TensorInfo tensorInfo in tensorInfos)
 			{
-				TorchSharp.torch.Tensor tensor = TorchSharp.torch.zeros(tensorInfo.Shape.ToArray(), dtype: tensorInfo.Type);
+				TorchSharp.torch.Tensor tensor = TorchSharp.torch.empty(tensorInfo.Shape.ToArray(), dtype: tensorInfo.Type);
 				byte[] bytes = ReadByteFromFile(tensorInfo);
 				tensor.bytes = bytes;
 				tensors.Add(tensorInfo.Name, tensor);

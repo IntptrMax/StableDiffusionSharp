@@ -7,7 +7,7 @@ using static TorchSharp.torch;
 
 namespace StableDiffusionSharp
 {
-	public class StableDiffusion
+	public class StableDiffusion : IDisposable
 	{
 		// Default parameters
 		private float linear_start = 0.00085f;
@@ -176,32 +176,33 @@ namespace StableDiffusionSharp
 		public ImageMagick.MagickImage TextToImage(string prompt, string nprompt, int width = 512, int height = 512, int steps = 20, long seed = 0, float cfg = 7.0f, SDSamplerType samplerType = SDSamplerType.Euler)
 		{
 			CheckModelLoaded();
-			if (steps < 1)
-			{
-				throw new ArgumentException("steps must be greater than 0");
-			}
-			if (cfg < 0.1)
-			{
-				throw new ArgumentException("cfg must be greater than 0.1");
-			}
-
-			seed = seed == 0 ? Random.Shared.NextInt64() : seed;
-			Generator generator = torch.manual_seed(seed);
-			torch.set_rng_state(generator.get_state());
-			steps = steps == 0 ? 20 : steps;
-			cfg = cfg == 0 ? 7.0f : cfg;
-
-			width = (width / 64) * 8;  // must be multiples of 64
-			height = (height / 64) * 8; // must be multiples of 64
-			Console.WriteLine("Device:" + device);
-			Console.WriteLine("Type:" + dtype);
-			Console.WriteLine("CFG:" + cfg);
-			Console.WriteLine("Seed:" + seed);
-			Console.WriteLine("Width:" + width * 8);
-			Console.WriteLine("Height:" + height * 8);
 
 			using (torch.no_grad())
 			{
+				if (steps < 1)
+				{
+					throw new ArgumentException("steps must be greater than 0");
+				}
+				if (cfg < 0.1)
+				{
+					throw new ArgumentException("cfg must be greater than 0.1");
+				}
+
+				seed = seed == 0 ? Random.Shared.NextInt64() : seed;
+				Generator generator = torch.manual_seed(seed);
+				torch.set_rng_state(generator.get_state());
+				steps = steps == 0 ? 20 : steps;
+				cfg = cfg == 0 ? 7.0f : cfg;
+
+				width = (width / 64) * 8;  // must be multiples of 64
+				height = (height / 64) * 8; // must be multiples of 64
+				Console.WriteLine("Device:" + device);
+				Console.WriteLine("Type:" + dtype);
+				Console.WriteLine("CFG:" + cfg);
+				Console.WriteLine("Seed:" + seed);
+				Console.WriteLine("Width:" + width * 8);
+				Console.WriteLine("Height:" + height * 8);
+
 				Stopwatch sp = Stopwatch.StartNew();
 				Console.WriteLine("Clip is doing......");
 				Tensor context = Clip(prompt, nprompt);
@@ -258,7 +259,7 @@ namespace StableDiffusionSharp
 		}
 
 
-		public ImageMagick.MagickImage ImageToImage(ImageMagick.MagickImage orgImage, string prompt, string nprompt, int steps = 20, float strength = 0.75f, long seed = 0, long subSeed = 0, float cfg = 7.0f,SDSamplerType samplerType = SDSamplerType.Euler)
+		public ImageMagick.MagickImage ImageToImage(ImageMagick.MagickImage orgImage, string prompt, string nprompt, int steps = 20, float strength = 0.75f, long seed = 0, long subSeed = 0, float cfg = 7.0f, SDSamplerType samplerType = SDSamplerType.Euler)
 		{
 			CheckModelLoaded();
 
@@ -338,86 +339,15 @@ namespace StableDiffusionSharp
 				img.SetAttribute("parameters", stringBuilder.ToString());
 				return img;
 			}
-
-
 		}
 
-
-		/// <summary>
-		/// Load Python .pt tensor file
-		/// </summary>
-		/// <param name="path">tensor path</param>
-		/// <returns>Tensor in TorchSharp</returns>
-		public static Tensor LoadTensorFromPT(string path)
+		public void Dispose()
 		{
-			torch.ScalarType dtype = torch.ScalarType.Float32;
-			List<long> shape = new List<long>();
-			ZipArchive zip = ZipFile.OpenRead(path);
-			ZipArchiveEntry headerEntry = zip.Entries.First(e => e.Name == "data.pkl");
-
-			// Header is always small enough to fit in memory, so we can read it all at once
-			using Stream headerStream = headerEntry.Open();
-			byte[] headerBytes = new byte[headerEntry.Length];
-			headerStream.Read(headerBytes, 0, headerBytes.Length);
-
-			string headerStr = Encoding.Default.GetString(headerBytes);
-			if (headerStr.Contains("HalfStorage"))
-			{
-				dtype = torch.ScalarType.Float16;
-			}
-			else if (headerStr.Contains("BFloat"))
-			{
-				dtype = torch.ScalarType.Float16;
-			}
-			else if (headerStr.Contains("FloatStorage"))
-			{
-				dtype = torch.ScalarType.Float32;
-			}
-			for (int i = 0; i < headerBytes.Length; i++)
-			{
-				if (headerBytes[i] == 81 && headerBytes[i + 1] == 75 && headerBytes[i + 2] == 0)
-				{
-					for (int j = i + 2; j < headerBytes.Length; j++)
-					{
-						if (headerBytes[j] == 75)
-						{
-							shape.Add(headerBytes[j + 1]);
-							j++;
-						}
-						else if (headerBytes[j] == 77)
-						{
-							shape.Add(headerBytes[j + 1] + headerBytes[j + 2] * 256);
-							j += 2;
-						}
-						else if (headerBytes[j] == 113)
-						{
-							break;
-						}
-
-					}
-					break;
-				}
-			}
-
-			Tensor tensor = torch.zeros(shape.ToArray(), dtype: dtype);
-			ZipArchiveEntry dataEntry = zip.Entries.First(e => e.Name == "0");
-
-			using Stream dataStream = dataEntry.Open();
-			byte[] data = new byte[dataEntry.Length];
-			dataStream.Read(data, 0, data.Length);
-			tensor.bytes = data;
-			return tensor;
-		}
-
-		/// <summary>
-		/// Load Python .pt tensor file and change dtype and device the same as given tensor.
-		/// </summary>
-		/// <param name="path">tensor path</param>
-		/// <param name="tensor">the given tensor</param>
-		/// <returns>Tensor in TorchSharp</returns>
-		public static Tensor LoadTensorFromPT(string path, Tensor tensor)
-		{
-			return LoadTensorFromPT(path).to(tensor.dtype, tensor.device);
+			cliper?.Dispose();
+			diffusion?.Dispose();
+			decoder?.Dispose();
+			encoder?.Dispose();
+			tempTextContext?.Dispose();
 		}
 
 	}
