@@ -6,21 +6,22 @@ using static TorchSharp.torch;
 
 namespace StableDiffusionSharp
 {
-	public class StableDiffusion : IDisposable
+	public class SDXL : IDisposable
 	{
 		// Default parameters
 		private float linear_start = 0.00085f;
 		private float linear_end = 0.0120f;
-		private float scale_factor = 0.18215f;
+		private float scale_factor = 0.13025f;
 		private int num_timesteps_cond = 1;
 		private int timesteps = 1000;
 
 		// UNet config
 		private int in_channels = 4;
 		private int model_channels = 320;
-		private int context_dim = 768;
+		private int context_dim = 2048;
 		private int num_head = 8;
 		private float dropout = 0.0f;
+		private int adm_in_channels = 2816;
 
 		// first stage config:
 		private int embed_dim = 4;
@@ -45,8 +46,8 @@ namespace StableDiffusionSharp
 			StepProgress?.Invoke(this, new StepEventArgs(currentStep, totalSteps));
 		}
 
-		private readonly Clip.SDCliper cliper;
-		private readonly Diffusion diffusion;
+		private readonly Clip.SDXLCliper cliper;
+		private readonly SDXLDiffusion diffusion;
 		private readonly VAE.Decoder decoder;
 		private readonly VAE.Encoder encoder;
 		private Tokenizer tokenizer;
@@ -66,13 +67,13 @@ namespace StableDiffusionSharp
 			return torch.cat([torch.cos(x), torch.sin(x)], dim: -1);
 		}
 
-		public StableDiffusion(SDDeviceType deviceType = SDDeviceType.CUDA, SDScalarType scalarType = SDScalarType.Float16)
+		public SDXL(SDDeviceType deviceType = SDDeviceType.CUDA, SDScalarType scalarType = SDScalarType.Float16)
 		{
 			this.device = new Device((DeviceType)deviceType);
 			this.dtype = (ScalarType)scalarType;
 			torchvision.io.DefaultImager = new torchvision.io.SkiaImager();
-			cliper = new Clip.SDCliper();
-			diffusion = new Diffusion(model_channels, in_channels, num_head, context_dim, dropout);
+			cliper = new Clip.SDXLCliper();
+			diffusion = new SDXLDiffusion(model_channels, in_channels, num_head, context_dim, adm_in_channels, dropout);
 			decoder = new VAE.Decoder(embed_dim: embed_dim, z_channels: z_channels);
 			encoder = new VAE.Encoder(embed_dim: embed_dim, z_channels: z_channels, double_z: double_z);
 		}
@@ -86,13 +87,13 @@ namespace StableDiffusionSharp
 				_ => throw new ArgumentException("Unknown model file extension")
 			};
 
-			var (cliper_missing, cliper_error) = cliper.load_state_dict(state_dict, strict: false);
-			cliper.to(device, dtype);
-			cliper.eval();
-
 			var (diffusion_missing, diffusion_error) = diffusion.load_state_dict(state_dict, strict: false);
 			diffusion.to(device, dtype);
 			diffusion.eval();
+
+			var (cliper_missing, cliper_error) = cliper.load_state_dict(state_dict, strict: false);
+			cliper.to(device, dtype);
+			cliper.eval();
 
 			var (decoder_missing, decoder_error) = decoder.load_state_dict(state_dict, strict: false);
 			decoder.to(device, dtype);
@@ -102,7 +103,7 @@ namespace StableDiffusionSharp
 			encoder.to(device, dtype);
 			encoder.eval();
 
-			if (cliper_missing.Count + diffusion_missing.Count + decoder_missing.Count/* + encoder_missing.Count*/ > 0)
+			if (cliper_missing.Count + diffusion_missing.Count + decoder_missing.Count + encoder_missing.Count > 0)
 			{
 				Console.WriteLine("Missing keys in model loading:");
 				foreach (var key in cliper_missing)
@@ -125,9 +126,6 @@ namespace StableDiffusionSharp
 
 			tokenizer = new Tokenizer(vocabPath, mergesPath);
 			is_loaded = true;
-
-			state_dict.Clear();
-			GC.Collect();
 		}
 
 		private void CheckModelLoaded()
@@ -211,6 +209,7 @@ namespace StableDiffusionSharp
 					_ => throw new ArgumentException("Unknown sampler type")
 				};
 
+
 				sampler.SetTimesteps(steps);
 				latents *= sampler.InitNoiseSigma();
 				Console.WriteLine($"begin sampling");
@@ -221,7 +220,7 @@ namespace StableDiffusionSharp
 					Tensor time_embedding = GetTimeEmbedding(timestep).to(dtype, device);
 					Tensor input_latents = sampler.ScaleModelInput(latents, i);
 					input_latents = input_latents.repeat(2, 1, 1, 1);
-					Tensor output = diffusion.forward(input_latents, context, time_embedding);
+					Tensor output = diffusion.forward(input_latents, context, time_embedding,torch.zeros(0));
 					Tensor[] ret = output.chunk(2);
 					Tensor output_cond = ret[0];
 					Tensor output_uncond = ret[1];
@@ -304,7 +303,7 @@ namespace StableDiffusionSharp
 					Tensor time_embedding = GetTimeEmbedding(timestep).to(dtype, device);
 					Tensor input_latents = sampler.ScaleModelInput(latents, index);
 					input_latents = input_latents.repeat(2, 1, 1, 1);
-					Tensor output = diffusion.forward(input_latents, context, time_embedding);
+					Tensor output = diffusion.forward(input_latents, context, time_embedding, torch.zeros(0));
 					Tensor[] ret = output.chunk(2);
 					Tensor output_cond = ret[0];
 					Tensor output_uncond = ret[1];

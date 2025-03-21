@@ -34,7 +34,7 @@ namespace StableDiffusionSharp.Scheduler
 		{
 			quantize = quantize ?? this.quantize;
 			Tensor log_sigma = sigma.log();
-			Tensor dists = log_sigma - log_sigmas![.., TensorIndex.None];
+			Tensor dists = log_sigma - log_sigmas[.., TensorIndex.None];
 
 			if (quantize == true)
 			{

@@ -106,16 +106,15 @@ namespace StableDiffusionSharp.ModelLoader
 			return ReadByteFromFile(inputFileName, bodyPosition, (long)offset, size);
 		}
 
-		internal static Dictionary<string, TorchSharp.torch.Tensor> Load(string fileName)
+		internal static Dictionary<string, TorchSharp.torch.Tensor> Load(string fileName, string addString="")
 		{
 			Dictionary<string, TorchSharp.torch.Tensor> tensors = new Dictionary<string, TorchSharp.torch.Tensor>();
 			List<TensorInfo> tensorInfos = ReadTensorsInfoFromFile(fileName);
 			foreach (TensorInfo tensorInfo in tensorInfos)
 			{
 				TorchSharp.torch.Tensor tensor = TorchSharp.torch.empty(tensorInfo.Shape.ToArray(), dtype: tensorInfo.Type);
-				byte[] bytes = ReadByteFromFile(tensorInfo);
-				tensor.bytes = bytes;
-				tensors.Add(tensorInfo.Name, tensor);
+				tensor.bytes = ReadByteFromFile(tensorInfo);
+				tensors.Add(addString + tensorInfo.Name, tensor);
 			}
 			return tensors;
 		}

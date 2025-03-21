@@ -51,6 +51,8 @@
 			TextBox_NPrompt = new TextBox();
 			TextBox_Prompt = new TextBox();
 			label2 = new Label();
+			tabPage2 = new TabPage();
+			tabPage3 = new TabPage();
 			groupBox1.SuspendLayout();
 			tabControl1.SuspendLayout();
 			tabPage1.SuspendLayout();
@@ -115,6 +117,8 @@
 			// tabControl1
 			// 
 			tabControl1.Controls.Add(tabPage1);
+			tabControl1.Controls.Add(tabPage2);
+			tabControl1.Controls.Add(tabPage3);
 			tabControl1.Location = new Point(12, 196);
 			tabControl1.Name = "tabControl1";
 			tabControl1.SelectedIndex = 0;
@@ -300,6 +304,26 @@
 			label2.TabIndex = 0;
 			label2.Text = "Prompt";
 			// 
+			// tabPage2
+			// 
+			tabPage2.Location = new Point(4, 26);
+			tabPage2.Name = "tabPage2";
+			tabPage2.Padding = new Padding(3);
+			tabPage2.Size = new Size(857, 367);
+			tabPage2.TabIndex = 1;
+			tabPage2.Text = "Image To Image";
+			tabPage2.UseVisualStyleBackColor = true;
+			// 
+			// tabPage3
+			// 
+			tabPage3.Location = new Point(4, 26);
+			tabPage3.Name = "tabPage3";
+			tabPage3.Padding = new Padding(3);
+			tabPage3.Size = new Size(857, 367);
+			tabPage3.TabIndex = 2;
+			tabPage3.Text = "Restore";
+			tabPage3.UseVisualStyleBackColor = true;
+			// 
 			// FormMain
 			// 
 			AutoScaleDimensions = new SizeF(7F, 17F);
@@ -349,5 +373,7 @@
 		private NumericUpDown NumericUpDown_CFG;
 		private NumericUpDown NumericUpDown_Step;
 		private Label Label_State;
+		private TabPage tabPage2;
+		private TabPage tabPage3;
 	}
 }
