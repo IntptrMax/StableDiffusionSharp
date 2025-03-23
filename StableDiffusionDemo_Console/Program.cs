@@ -8,10 +8,10 @@ namespace StableDiffusionDemo_Console
 		{
 			string modelPath = @".\chilloutmix.safetensors";
 			string esrganModelPath = @".\RealESRGAN_x4plus.pth";
-			string prompt = "High quality, best quality, sunset, sea, beach, tree, realistic.";
-			string nprompt = "Bad quality, worst quality.";
+			string prompt = "High quality, best quality, realistic, beach, trees, sunset on sea.";
+			string nprompt = "2D, 3D, cartoon, painting, bad quality, worst quality.";
 			string i2iPrompt = "High quality, best quality, moon, grass, tree, boat.";
-			prompt = "High quality, best quality, realistic, a cat sitting in box.";
+			//prompt = "High quality, best quality, realistic, a cat sitting in box.";
 
 			SDDeviceType deviceType = SDDeviceType.CUDA;
 			SDScalarType scalarType = SDScalarType.Float16;
@@ -24,10 +24,11 @@ namespace StableDiffusionDemo_Console
 			int height = 512;
 			float strength = 0.75f;
 
-			// SDXL can't work now.
+			//// SDXL is not supported now.
 			//SDXL sdxl = new SDXL(deviceType, scalarType);
-			//sdxl.LoadModel(@".\tPonynai3_v4.safetensors");
-			//sdxl.TextToImage(prompt, nprompt, width, height, step, seed, cfg, samplerType);
+			//sdxl.LoadModel(modelPath);
+			//ImageMagick.MagickImage sdxlT2Image = sdxl.TextToImage(prompt, nprompt, width, height, step, seed, cfg, samplerType);
+			//sdxlT2Image.Write("output_sdxl_t2i.png");
 
 			StableDiffusion sd = new StableDiffusion(deviceType, scalarType);
 			Console.WriteLine("Loading model......");
@@ -37,17 +38,17 @@ namespace StableDiffusionDemo_Console
 			ImageMagick.MagickImage t2iImage = sd.TextToImage(prompt, nprompt, width, height, step, seed, cfg, samplerType);
 			t2iImage.Write("output_t2i.png");
 
-			//ImageMagick.MagickImage i2iImage = sd.ImageToImage(t2iImage, i2iPrompt, nprompt, step, strength, seed, img2imgSubSeed, cfg, samplerType);
-			//i2iImage.Write("output_i2i.png");
+			ImageMagick.MagickImage i2iImage = sd.ImageToImage(t2iImage, i2iPrompt, nprompt, step, strength, seed, img2imgSubSeed, cfg, samplerType);
+			i2iImage.Write("output_i2i.png");
 
 			sd.Dispose();
 			GC.Collect();
 
-			//Console.WriteLine("Doing upscale......");
-			//Esrgan esrgan = new Esrgan(deviceType: deviceType, scalarType: scalarType);
-			//esrgan.LoadModel(esrganModelPath);
-			//ImageMagick.MagickImage upscaleImg = esrgan.UpScale(t2iImage);
-			//upscaleImg.Write("upscale.png");
+			Console.WriteLine("Doing upscale......");
+			Esrgan esrgan = new Esrgan(deviceType: deviceType, scalarType: scalarType);
+			esrgan.LoadModel(esrganModelPath);
+			ImageMagick.MagickImage upscaleImg = esrgan.UpScale(t2iImage);
+			upscaleImg.Write("upscale.png");
 
 			Console.WriteLine(@"Done. Images have been saved.");
 		}

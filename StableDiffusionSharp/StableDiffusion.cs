@@ -71,10 +71,11 @@ namespace StableDiffusionSharp
 			this.device = new Device((DeviceType)deviceType);
 			this.dtype = (ScalarType)scalarType;
 			torchvision.io.DefaultImager = new torchvision.io.SkiaImager();
-			cliper = new Clip.SDCliper();
-			diffusion = new Diffusion(model_channels, in_channels, num_head, context_dim, dropout);
-			decoder = new VAE.Decoder(embed_dim: embed_dim, z_channels: z_channels);
-			encoder = new VAE.Encoder(embed_dim: embed_dim, z_channels: z_channels, double_z: double_z);
+			cliper = new Clip.SDCliper().to(device, dtype);
+			diffusion = new Diffusion(model_channels, in_channels, num_head, context_dim, dropout).to(device, dtype);
+			decoder = new VAE.Decoder(embed_dim: embed_dim, z_channels: z_channels).to(device, dtype);
+			encoder = new VAE.Encoder(embed_dim: embed_dim, z_channels: z_channels, double_z: double_z).to(device, dtype);
+
 		}
 
 		public void LoadModel(string modelPath, string vocabPath = @".\models\clip\vocab.json", string mergesPath = @".\models\clip\merges.txt")
@@ -85,6 +86,7 @@ namespace StableDiffusionSharp
 				".pickle" => ModelLoader.PickleLoader.Load(modelPath),
 				_ => throw new ArgumentException("Unknown model file extension")
 			};
+
 
 			var (cliper_missing, cliper_error) = cliper.load_state_dict(state_dict, strict: false);
 			cliper.to(device, dtype);
@@ -126,7 +128,7 @@ namespace StableDiffusionSharp
 			tokenizer = new Tokenizer(vocabPath, mergesPath);
 			is_loaded = true;
 
-			state_dict.Clear();
+			//state_dict.Clear();
 			GC.Collect();
 		}
 
@@ -147,7 +149,7 @@ namespace StableDiffusionSharp
 				Tensor cond_context = cliper.forward(cond_tokens);
 				Tensor uncond_tokens = tokenizer.Tokenize(nprompt).to(device);
 				Tensor uncond_context = cliper.forward(uncond_tokens);
-				Tensor context = torch.cat([cond_context, uncond_context]).to(dtype, device);
+				Tensor context = torch.cat([cond_context, uncond_context]);
 				this.tempPromptHash = (prompt + nprompt).GetHashCode();
 				this.tempTextContext = context;
 				return context;

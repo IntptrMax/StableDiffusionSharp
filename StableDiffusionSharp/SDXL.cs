@@ -72,10 +72,10 @@ namespace StableDiffusionSharp
 			this.device = new Device((DeviceType)deviceType);
 			this.dtype = (ScalarType)scalarType;
 			torchvision.io.DefaultImager = new torchvision.io.SkiaImager();
-			cliper = new Clip.SDXLCliper();
-			diffusion = new SDXLDiffusion(model_channels, in_channels, num_head, context_dim, adm_in_channels, dropout);
-			decoder = new VAE.Decoder(embed_dim: embed_dim, z_channels: z_channels);
-			encoder = new VAE.Encoder(embed_dim: embed_dim, z_channels: z_channels, double_z: double_z);
+			cliper = new Clip.SDXLCliper().to(device, dtype);
+			diffusion = new SDXLDiffusion(model_channels, in_channels, num_head, context_dim, adm_in_channels, dropout).to(device, dtype);
+			decoder = new VAE.Decoder(embed_dim: embed_dim, z_channels: z_channels).to(device, dtype);
+			encoder = new VAE.Encoder(embed_dim: embed_dim, z_channels: z_channels, double_z: double_z).to(device, dtype);
 		}
 
 		public void LoadModel(string modelPath, string vocabPath = @".\models\clip\vocab.json", string mergesPath = @".\models\clip\merges.txt")
@@ -145,10 +145,10 @@ namespace StableDiffusionSharp
 				Tensor cond_context = cliper.forward(cond_tokens);
 				Tensor uncond_tokens = tokenizer.Tokenize(nprompt).to(device);
 				Tensor uncond_context = cliper.forward(uncond_tokens);
-				Tensor context = torch.cat([cond_context, uncond_context]).to(dtype, device);
+				Tensor context = torch.cat([cond_context, uncond_context]);
 				this.tempPromptHash = (prompt + nprompt).GetHashCode();
 				this.tempTextContext = context;
-				return context;
+				return (context);
 			}
 			else
 			{
@@ -220,7 +220,9 @@ namespace StableDiffusionSharp
 					Tensor time_embedding = GetTimeEmbedding(timestep).to(dtype, device);
 					Tensor input_latents = sampler.ScaleModelInput(latents, i);
 					input_latents = input_latents.repeat(2, 1, 1, 1);
-					Tensor output = diffusion.forward(input_latents, context, time_embedding,torch.zeros(0));
+					Tensor cond_vector = torch.randn([2, adm_in_channels], dtype, device);
+
+					Tensor output = diffusion.forward(input_latents, context, time_embedding, cond_vector);
 					Tensor[] ret = output.chunk(2);
 					Tensor output_cond = ret[0];
 					Tensor output_uncond = ret[1];
@@ -228,6 +230,7 @@ namespace StableDiffusionSharp
 					latents = sampler.Step(output, i, latents, seed);
 					//OnStepProgress(i + 1, steps);
 				}
+
 				Console.WriteLine($"end sampling");
 				Console.WriteLine($"begin decoder");
 				latents = latents / scale_factor;

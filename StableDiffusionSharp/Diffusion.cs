@@ -202,12 +202,14 @@ namespace StableDiffusionSharp
 		private readonly Module<Tensor, Tensor> proj_in;
 		private readonly Module<Tensor, Tensor> proj_out;
 		private readonly ModuleList<Module<Tensor, Tensor, Tensor>> transformer_blocks;
+		private readonly bool use_linear;
 
-		public SpatialTransformer(int channels, int n_cross, int n_head, int num_atten_blocks, float drop_out = 0.0f, bool useLinear = false) : base(nameof(SpatialTransformer))
+		public SpatialTransformer(int channels, int n_cross, int n_head, int num_atten_blocks, float drop_out = 0.0f, bool use_linear = false) : base(nameof(SpatialTransformer))
 		{
 			this.norm = GroupNorm(32, channels, 1e-6);
-			this.proj_in = useLinear ? Linear(channels, channels) : Conv2d(channels, channels, kernel_size: 1);
-			this.proj_out = useLinear ? Linear(channels, channels) : Conv2d(channels, channels, kernel_size: 1);
+			this.use_linear = use_linear;
+			this.proj_in = use_linear ? Linear(channels, channels) : Conv2d(channels, channels, kernel_size: 1);
+			this.proj_out = use_linear ? Linear(channels, channels) : Conv2d(channels, channels, kernel_size: 1);
 			this.transformer_blocks = new ModuleList<Module<Tensor, Tensor, Tensor>>();
 			for (int i = 0; i < num_atten_blocks; i++)
 			{
@@ -220,26 +222,44 @@ namespace StableDiffusionSharp
 		{
 			using (NewDisposeScope())
 			{
+				long n = x.shape[0];
+				long c = x.shape[1];
+				long h = x.shape[2];
+				long w = x.shape[3];
+
 				Tensor residue_short = x;
 				x = norm.forward(x);
-				x = proj_in.forward(x);
 
-				var n = x.shape[0];
-				var c = x.shape[1];
-				var h = x.shape[2];
-				var w = x.shape[3];
+				if (!use_linear)
+				{
+					x = proj_in.forward(x);
+				}
+
 				x = x.view([n, c, h * w]);
 				x = x.transpose(-1, -2);
+
+				if (use_linear)
+				{
+					x = proj_in.forward(x);
+				}
 
 				foreach (Module<Tensor, Tensor, Tensor> layer in transformer_blocks.children())
 				{
 					x = layer.forward(x, context);
 				}
 
+				if (use_linear)
+				{
+					x = this.proj_out.forward(x);
+				}
 				x = x.transpose(-1, -2);
 				x = x.view([n, c, h, w]);
+				if (!use_linear)
+				{
+					x = proj_out.forward(x);
+				}
 
-				residue_short = residue_short + proj_out.forward(x);
+				residue_short = residue_short + x;
 				return residue_short.MoveToOuterDisposeScope();
 			}
 		}
@@ -565,25 +585,25 @@ namespace StableDiffusionSharp
 				input_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(320, 320)));
 				input_blocks.Add(new TimestepEmbedSequential(new Downsample(320)));
 
-				input_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(320, 640), new SpatialTransformer(640, 2048, 20, 2, 0, true)));
-				input_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(640, 640), new SpatialTransformer(640, 2048, 20, 2, 0, true)));
+				input_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(320, 640), new SpatialTransformer(640, 2048, 20, 2, 0, useLinear)));
+				input_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(640, 640), new SpatialTransformer(640, 2048, 20, 2, 0, useLinear)));
 				input_blocks.Add(new TimestepEmbedSequential(new Downsample(640)));
 
-				input_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(640, 1280), new SpatialTransformer(1280, 2048, 20, 10, 0, true)));
-				input_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(1280, 1280), new SpatialTransformer(1280, 2048, 20, 10, 0, true)));
+				input_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(640, 1280), new SpatialTransformer(1280, 2048, 20, 10, 0, useLinear)));
+				input_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(1280, 1280), new SpatialTransformer(1280, 2048, 20, 10, 0, useLinear)));
 
 				// mid_block
-				middle_block = (new TimestepEmbedSequential(new ResnetBlock(1280, 1280), new SpatialTransformer(1280, 2048, 20, 10, 0, true), new ResnetBlock(1280, 1280)));
+				middle_block = (new TimestepEmbedSequential(new ResnetBlock(1280, 1280), new SpatialTransformer(1280, 2048, 20, 10, 0, useLinear), new ResnetBlock(1280, 1280)));
 
 				// upsampling
 				this.output_blocks = new ModuleList<TimestepEmbedSequential>();
-				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(2560, 1280), new SpatialTransformer(1280, 2048, 20, 10, 0, true)));
-				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(2560, 1280), new SpatialTransformer(1280, 2048, 20, 10, 0, true)));
-				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(1920, 1280), new SpatialTransformer(1280, 2048, 20, 10, 0, true), new Upsample(1280)));
+				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(2560, 1280), new SpatialTransformer(1280, 2048, 20, 10, 0, useLinear)));
+				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(2560, 1280), new SpatialTransformer(1280, 2048, 20, 10, 0, useLinear)));
+				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(1920, 1280), new SpatialTransformer(1280, 2048, 20, 10, 0, useLinear), new Upsample(1280)));
 
-				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(1920, 640), new SpatialTransformer(640, 2048, 20, 2, 0, true)));
-				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(1280, 640), new SpatialTransformer(640, 2048, 20, 2, 0, true)));
-				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(960, 640), new SpatialTransformer(640, 2048, 20, 2, 0, true), new Upsample(640)));
+				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(1920, 640), new SpatialTransformer(640, 2048, 20, 2, 0, useLinear)));
+				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(1280, 640), new SpatialTransformer(640, 2048, 20, 2, 0, useLinear)));
+				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(960, 640), new SpatialTransformer(640, 2048, 20, 2, 0, useLinear), new Upsample(640)));
 
 				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(960, 320)));
 				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(640, 320)));
@@ -598,7 +618,6 @@ namespace StableDiffusionSharp
 			{
 				using (NewDisposeScope())
 				{
-					using var _ = NewDisposeScope();
 					Tensor embed = time_embed.forward(time);
 					Tensor label_embed = label_emb.forward(y);
 					embed = embed + label_embed;
@@ -636,13 +655,14 @@ namespace StableDiffusionSharp
 
 			public override Tensor forward(Tensor latent, Tensor context, Tensor time, Tensor y)
 			{
-				return diffusion_model.forward(latent, context, time, y);
+				latent = diffusion_model.forward(latent, context, time, y);
+				return latent;
 			}
 		}
 
 		private readonly Model model;
 
-		public SDXLDiffusion(int model_channels, int in_channels, int num_heads = 8, int context_dim = 2048, int adm_in_channels = 2816, float dropout = 0.0f, bool use_timestep = true) : base(nameof(Diffusion))
+		public SDXLDiffusion(int model_channels, int in_channels, int num_heads = 20, int context_dim = 2048, int adm_in_channels = 2816, float dropout = 0.0f, bool use_timestep = true) : base(nameof(Diffusion))
 		{
 			model = new Model(model_channels, in_channels, context_dim: context_dim, adm_in_channels: adm_in_channels, num_heads: num_heads, dropout: dropout, use_timestep: use_timestep);
 			RegisterComponents();
@@ -650,7 +670,8 @@ namespace StableDiffusionSharp
 
 		public override Tensor forward(Tensor latent, Tensor context, Tensor time, Tensor y)
 		{
-			return model.forward(latent, context, time, y);
+			latent = model.forward(latent, context, time, y);
+			return latent;
 		}
 
 	}

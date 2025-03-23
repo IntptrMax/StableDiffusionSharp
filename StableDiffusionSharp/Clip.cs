@@ -220,7 +220,7 @@ namespace StableDiffusionSharp
 			public ViT_bigG_Clip(long n_vocab = 49408, long n_token = 77, long num_layers = 32, long n_heads = 20, long embed_dim = 1280, long intermediate_size = 1280 * 4) : base(nameof(ViT_L_Clip))
 			{
 				token_embedding = Embedding(n_vocab, embed_dim);
-				positional_embedding = Parameter(torch.rand(size: [n_token, embed_dim]));
+				positional_embedding = Parameter(torch.zeros(size: [n_token, embed_dim]));
 				transformer = new ClipEncoder(num_layers, embed_dim, n_heads, intermediate_size, Activations.GELU);
 				ln_final = LayerNorm(embed_dim);
 				RegisterComponents();
@@ -432,8 +432,7 @@ namespace StableDiffusionSharp
 					{
 						Tensor vit_l_result = embedders[0].call(token);
 						Tensor vit_bigG_result = embedders[1].call(token);
-
-						return cat([vit_l_result, vit_bigG_result], 2).MoveToOuterDisposeScope();
+						return (cat([vit_l_result, vit_bigG_result], 2).MoveToOuterDisposeScope());
 					}
 
 				}
