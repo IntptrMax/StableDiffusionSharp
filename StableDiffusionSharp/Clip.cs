@@ -15,23 +15,61 @@ namespace StableDiffusionSharp
 			GELU
 		}
 
-		internal class ViT_L_Clip : Module<Tensor, Tensor>
+		internal class ViT_L_Clip : Module<Tensor, long, bool, Tensor>
 		{
-			internal readonly Sequential transformer;
+			private readonly Transformer transformer;
+
 			public ViT_L_Clip(long n_vocab = 49408, long n_token = 77, long num_layers = 12, long n_heads = 12, long embed_dim = 768, long intermediate_size = 768 * 4) : base(nameof(ViT_L_Clip))
 			{
-				transformer = Sequential(("text_model", Sequential(
-					[("embeddings", new CLIPEmbedding(n_vocab, embed_dim, n_token)),
-					("encoder", new ClipEncoder(num_layers, embed_dim, n_heads, intermediate_size, Activations.QuickGELU)),
-					("final_layer_norm", LayerNorm(embed_dim))])));
+				transformer = new Transformer(n_vocab, n_token, num_layers, n_heads, embed_dim, intermediate_size);
 				RegisterComponents();
 			}
 
-			public override Tensor forward(Tensor token)
+			public override Tensor forward(Tensor token, long num_skip, bool with_final_ln)
 			{
-				return transformer.forward(token);
+				return transformer.forward(token, num_skip, with_final_ln);
 			}
 
+			private class Transformer : Module<Tensor, long, bool, Tensor>
+			{
+				private readonly TextModel text_model;
+				public Transformer(long n_vocab, long n_token, long num_layers, long n_heads, long embed_dim, long intermediate_size) : base(nameof(Transformer))
+				{
+					text_model = new TextModel(n_vocab, n_token, num_layers, n_heads, embed_dim, intermediate_size);
+					RegisterComponents();
+				}
+				public override Tensor forward(Tensor x, long num_skip, bool with_final_ln)
+				{
+					return text_model.forward(x, num_skip, with_final_ln);
+				}
+			}
+
+			private class TextModel : Module<Tensor, long, bool, Tensor>
+			{
+				private readonly CLIPEmbedding embeddings;
+				private readonly ClipEncoder encoder;
+				private readonly LayerNorm final_layer_norm;
+				private readonly long num_layers;
+
+				public TextModel(long n_vocab, long n_token, long num_layers, long n_heads, long embed_dim, long intermediate_size) : base(nameof(TextModel))
+				{
+					this.num_layers = num_layers;
+					embeddings = new CLIPEmbedding(n_vocab, embed_dim, n_token);
+					encoder = new ClipEncoder(num_layers, embed_dim, n_heads, intermediate_size, Activations.QuickGELU);
+					final_layer_norm = LayerNorm(embed_dim);
+					RegisterComponents();
+				}
+				public override Tensor forward(Tensor x, long num_skip, bool with_final_ln)
+				{
+					x = embeddings.forward(x);
+					x = encoder.forward(x, num_skip);
+					if (with_final_ln)
+					{
+						x = final_layer_norm.forward(x);
+					}
+					return x;
+				}
+			}
 
 			private class CLIPEmbedding : Module<Tensor, Tensor>
 			{
@@ -73,8 +111,6 @@ namespace StableDiffusionSharp
 					return x;
 				}
 			}
-
-
 
 			private class Mlp : Module<Tensor, Tensor>
 			{
@@ -189,7 +225,7 @@ namespace StableDiffusionSharp
 				}
 			}
 
-			private class ClipEncoder : Module<Tensor, Tensor>
+			private class ClipEncoder : Module<Tensor, long, Tensor>
 			{
 				private readonly Sequential layers;
 
@@ -203,38 +239,60 @@ namespace StableDiffusionSharp
 					RegisterComponents();
 				}
 
-				public override Tensor forward(Tensor x)
+				public override Tensor forward(Tensor x, long num_skip)
 				{
-					return layers.forward(x);
+					long num_act = num_skip > 0 ? (layers.Count - num_skip) : layers.Count;
+					for (long i = 0; i < num_act; i++)
+					{
+						x = ((CLIPLayer)(layers.children().ToArray()[i])).forward(x);
+					}
+					//return layers.forward(x);
+					return x;
 				}
 			}
 		}
 
-		private class ViT_bigG_Clip : Module<Tensor, Tensor>
+		private class ViT_bigG_Clip : Module<Tensor, long, bool, bool, Tensor>
 		{
+			private readonly int adm_in_channels;
+
 			private readonly Embedding token_embedding;
 			private readonly Parameter positional_embedding;
 			private readonly ClipEncoder transformer;
 			private readonly LayerNorm ln_final;
+			private readonly Parameter text_projection;
 
-			public ViT_bigG_Clip(long n_vocab = 49408, long n_token = 77, long num_layers = 32, long n_heads = 20, long embed_dim = 1280, long intermediate_size = 1280 * 4) : base(nameof(ViT_L_Clip))
+			public ViT_bigG_Clip(long n_vocab = 49408, long n_token = 77, long num_layers = 32, long n_heads = 20, long embed_dim = 1280, long intermediate_size = 1280 * 4, int adm_in_channels = 2816) : base(nameof(ViT_bigG_Clip))
 			{
 				token_embedding = Embedding(n_vocab, embed_dim);
 				positional_embedding = Parameter(torch.zeros(size: [n_token, embed_dim]));
+				text_projection = Parameter(torch.zeros(size: [embed_dim, embed_dim]));
 				transformer = new ClipEncoder(num_layers, embed_dim, n_heads, intermediate_size, Activations.GELU);
 				ln_final = LayerNorm(embed_dim);
+				this.adm_in_channels = adm_in_channels;
 				RegisterComponents();
 			}
 
-			public override Tensor forward(Tensor x)
+			public override Tensor forward(Tensor x, long num_skip, bool with_final_ln, bool with_pool)
 			{
 				x = token_embedding.forward(x) + positional_embedding;
-				x = transformer.forward(x);
-				x = ln_final.forward(x);
+				x = transformer.forward(x, num_skip);
+				if (with_final_ln || with_pool)
+				{
+					x = ln_final.forward(x);
+				}
+				if (with_pool)
+				{
+					x = x[.., -1, ..];
+					x = torch.nn.functional.linear(x, text_projection);
+					long padLength = this.adm_in_channels - x.shape[1];
+					x = torch.nn.functional.pad(x, [0, padLength, 0, 0]);
+					return x;
+				}
 				return x;
 			}
 
-			private class ClipEncoder : Module<Tensor, Tensor>
+			private class ClipEncoder : Module<Tensor, long, Tensor>
 			{
 				private readonly Sequential resblocks;
 				public ClipEncoder(long num_layers, long embed_dim, long heads, long intermediate_size, Activations intermediate_activation) : base(nameof(ClipEncoder))
@@ -247,9 +305,15 @@ namespace StableDiffusionSharp
 					RegisterComponents();
 				}
 
-				public override Tensor forward(Tensor x)
+				public override Tensor forward(Tensor x, long num_skip)
 				{
-					return resblocks.forward(x);
+					long num_act = num_skip > 0 ? (resblocks.Count - num_skip) : resblocks.Count;
+					for (long i = 0; i < num_act; i++)
+					{
+						x = ((CLIPLayer)(resblocks.children().ToArray()[i])).forward(x);
+					}
+					//return resblocks.forward(x);
+					return x;
 				}
 			}
 
@@ -390,7 +454,7 @@ namespace StableDiffusionSharp
 			}
 		}
 
-		internal class SDCliper : Module<Tensor, Tensor>
+		internal class SDCliper : Module<Tensor, long, bool, Tensor>
 		{
 			internal readonly ViT_L_Clip cond_stage_model;
 			public SDCliper(long n_vocab = 49408, long n_token = 77, long num_layers = 12, long n_heads = 12, long embed_dim = 768, long intermediate_size = 768 * 4) : base(nameof(SDCliper))
@@ -398,13 +462,15 @@ namespace StableDiffusionSharp
 				cond_stage_model = new ViT_L_Clip(n_vocab, n_token, num_layers, n_heads, embed_dim, intermediate_size);
 				RegisterComponents();
 			}
-			public override Tensor forward(Tensor token)
+			public override Tensor forward(Tensor token, long num_skip, bool with_final_ln)
 			{
-				return cond_stage_model.forward(token);
+				Device device = cond_stage_model.parameters().First().device;
+				token = token.to(device);
+				return cond_stage_model.forward(token, num_skip, with_final_ln);
 			}
 		}
 
-		internal class SDXLCliper : Module<Tensor, Tensor>
+		internal class SDXLCliper : Module<Tensor, (Tensor, Tensor)>
 		{
 			private readonly Embedders conditioner;
 			public SDXLCliper(long n_vocab = 49408, long n_token = 77) : base(nameof(SDXLCliper))
@@ -413,28 +479,46 @@ namespace StableDiffusionSharp
 				RegisterComponents();
 			}
 
-			public override Tensor forward(Tensor token)
+			public override (Tensor, Tensor) forward(Tensor token)
 			{
+				Device device = conditioner.parameters().First().device;
+				token = token.to(device);
 				return conditioner.forward(token);
 			}
 
-			private class Embedders : Module<Tensor, Tensor>
+			private class Embedders : Module<Tensor, (Tensor, Tensor)>
 			{
-				private readonly Sequential embedders;
+				private readonly ModuleList<Module> embedders;
 				public Embedders() : base(nameof(Embedders))
 				{
-					embedders = Sequential(new ViT_L_Clip(), Sequential(("model", new ViT_bigG_Clip())));
+					Model model = new Model();
+					embedders = ModuleList(new ViT_L_Clip(), model);
 					RegisterComponents();
 				}
-				public override Tensor forward(Tensor token)
+				public override (Tensor, Tensor) forward(Tensor token)
 				{
 					using (NewDisposeScope())
 					{
-						Tensor vit_l_result = embedders[0].call(token);
-						Tensor vit_bigG_result = embedders[1].call(token);
-						return (cat([vit_l_result, vit_bigG_result], 2).MoveToOuterDisposeScope());
+						Tensor vit_l_result = ((ViT_L_Clip)embedders[0]).forward(token, 2, true);
+						Tensor vit_bigG_result = ((Model)embedders[1]).forward(token, 2, true, false);
+						Tensor vit_bigG_vec = ((Model)embedders[1]).forward(token, 0, false, true);
+						return (cat([vit_l_result, vit_bigG_result], 2).MoveToOuterDisposeScope(), vit_bigG_vec.MoveToOuterDisposeScope());
 					}
 
+				}
+			}
+
+			private class Model : Module<Tensor, long, bool, bool, Tensor>
+			{
+				private readonly ViT_bigG_Clip model;
+				public Model() : base(nameof(Model))
+				{
+					model = new ViT_bigG_Clip();
+					RegisterComponents();
+				}
+				public override Tensor forward(Tensor token, long num_skip, bool with_final_ln, bool with_pool)
+				{
+					return model.forward(token, num_skip, with_final_ln, with_pool);
 				}
 			}
 		}

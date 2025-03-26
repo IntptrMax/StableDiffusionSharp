@@ -11,7 +11,6 @@ namespace StableDiffusionDemo_Console
 			string prompt = "High quality, best quality, realistic, beach, trees, sunset on sea.";
 			string nprompt = "2D, 3D, cartoon, painting, bad quality, worst quality.";
 			string i2iPrompt = "High quality, best quality, moon, grass, tree, boat.";
-			//prompt = "High quality, best quality, realistic, a cat sitting in box.";
 
 			SDDeviceType deviceType = SDDeviceType.CUDA;
 			SDScalarType scalarType = SDScalarType.Float16;

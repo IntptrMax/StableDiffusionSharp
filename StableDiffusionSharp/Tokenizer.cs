@@ -69,8 +69,11 @@ namespace StableDiffusionSharp
 		public Tensor Tokenize(string text, int maxTokens = 77)
 		{
 			var res = _tokenizer.EncodeToIds(text);
-			var tokens = new[] { _startToken }.Concat(res.Concat(Enumerable.Repeat(0, maxTokens - res.Count - 2))).Concat(new[] { _endToken }).ToArray();
-			return torch.tensor(tokens, @long).unsqueeze(0);
+			Tensor tokens = torch.zeros([77], ScalarType.Int64);
+			tokens[0] = 49406;
+			tokens[-1] = 49407;
+			tokens[1..(res.Count + 1)] = res.ToArray();
+			return tokens.unsqueeze(0);
 		}
 	}
 }

@@ -5,53 +5,6 @@ using static TorchSharp.torch.nn;
 
 namespace StableDiffusionSharp
 {
-	internal class SelfAttention : Module<Tensor, Tensor>
-	{
-		private readonly Linear to_q;
-		private readonly Linear to_k;
-		private readonly Linear to_v;
-		private readonly Sequential to_out;
-		private readonly long n_heads_;
-		private readonly long d_head;
-		private readonly bool causal_mask_;
-
-		public SelfAttention(long channels, long n_heads, bool in_proj_bias = false, bool out_proj_bias = true, float dropout_p = 0.1f, bool causal_mask = false) : base("SelfAttention")
-		{
-			this.to_q = Linear(channels, channels, hasBias: in_proj_bias);
-			this.to_k = Linear(channels, channels, hasBias: in_proj_bias);
-			this.to_v = Linear(channels, channels, hasBias: in_proj_bias);
-			this.to_out = Sequential(Linear(channels, channels, hasBias: out_proj_bias), Dropout(dropout_p, inplace: false));
-			this.n_heads_ = n_heads;
-			this.d_head = channels / n_heads;
-			this.causal_mask_ = causal_mask;
-			RegisterComponents();
-		}
-
-		public override Tensor forward(Tensor x)
-		{
-			using (NewDisposeScope())
-			{
-				long[] input_shape = x.shape;
-				long batch_size = input_shape[0];
-				long sequence_length = input_shape[1];
-
-				long[] interim_shape = [batch_size, -1, n_heads_, d_head];
-
-				Tensor q = to_q.forward(x);
-				Tensor k = to_k.forward(x);
-				Tensor v = to_v.forward(x);
-
-				q = q.view(interim_shape).transpose(1, 2);
-				k = k.view(interim_shape).transpose(1, 2);
-				v = v.view(interim_shape).transpose(1, 2);
-				Tensor output = torch.nn.functional.scaled_dot_product_attention(q, k, v, is_casual: causal_mask_);
-				output = output.transpose(1, 2).reshape(input_shape);
-				output = to_out.forward(output);
-				return output.MoveToOuterDisposeScope();
-			}
-		}
-	}
-
 	internal class CrossAttention : Module<Tensor, Tensor, Tensor>
 	{
 		private readonly Linear to_q;
@@ -62,7 +15,7 @@ namespace StableDiffusionSharp
 		private readonly long d_head;
 		private readonly bool causal_mask_;
 
-		public CrossAttention(long channels, long d_cross, long n_heads, bool in_proj_bias = false, bool out_proj_bias = true, float dropout_p = 0.0f, bool causal_mask = true) : base("CrossAttention")
+		public CrossAttention(long channels, long d_cross, long n_heads, bool causal_mask = false, bool in_proj_bias = false, bool out_proj_bias = true, float dropout_p = 0.0f) : base(nameof(CrossAttention))
 		{
 			this.to_q = Linear(channels, channels, hasBias: in_proj_bias);
 			this.to_k = Linear(d_cross, channels, hasBias: in_proj_bias);
@@ -162,7 +115,7 @@ namespace StableDiffusionSharp
 	internal class TransformerBlock : Module<Tensor, Tensor, Tensor>
 	{
 		private LayerNorm norm1;
-		private SelfAttention attn1;
+		private CrossAttention attn1;
 		private LayerNorm norm2;
 		private CrossAttention attn2;
 		private LayerNorm norm3;
@@ -171,7 +124,7 @@ namespace StableDiffusionSharp
 		public TransformerBlock(int channels, int n_cross, int n_head) : base(nameof(TransformerBlock))
 		{
 			this.norm1 = LayerNorm(channels);
-			this.attn1 = new SelfAttention(channels, n_head);
+			this.attn1 = new CrossAttention(channels, channels, n_head);
 			this.norm2 = LayerNorm(channels);
 			this.attn2 = new CrossAttention(channels, n_cross, n_head);
 			this.norm3 = LayerNorm(channels);
@@ -182,7 +135,7 @@ namespace StableDiffusionSharp
 		{
 			var residue_short = x;
 			x = norm1.forward(x);
-			x = attn1.forward(x);
+			x = attn1.forward(x, x);
 			x += residue_short;
 			residue_short = x;
 			x = norm2.forward(x);
@@ -232,7 +185,7 @@ namespace StableDiffusionSharp
 
 				if (!use_linear)
 				{
-					x = proj_in.forward(x);
+					x = this.proj_in.forward(x);
 				}
 
 				x = x.view([n, c, h * w]);
@@ -240,7 +193,7 @@ namespace StableDiffusionSharp
 
 				if (use_linear)
 				{
-					x = proj_in.forward(x);
+					x = this.proj_in.forward(x);
 				}
 
 				foreach (Module<Tensor, Tensor, Tensor> layer in transformer_blocks.children())
@@ -256,7 +209,7 @@ namespace StableDiffusionSharp
 				x = x.view([n, c, h, w]);
 				if (!use_linear)
 				{
-					x = proj_out.forward(x);
+					x = this.proj_out.forward(x);
 				}
 
 				residue_short = residue_short + x;
@@ -353,10 +306,13 @@ namespace StableDiffusionSharp
 
 		public override Tensor forward(Tensor x)
 		{
-			Tensor[] result = this.proj.forward(x).chunk(2, dim: -1);
-			x = result[0];
-			Tensor gate = result[1];
-			return x * torch.nn.functional.gelu(gate);
+			using (NewDisposeScope())
+			{
+				Tensor[] result = this.proj.forward(x).chunk(2, dim: -1);
+				x = result[0];
+				Tensor gate = result[1];
+				return (x * torch.nn.functional.gelu(gate)).MoveToOuterDisposeScope();
+			}
 		}
 	}
 
@@ -379,10 +335,8 @@ namespace StableDiffusionSharp
 		}
 	}
 
-
 	internal class Diffusion : Module<Tensor, Tensor, Tensor, Tensor>
 	{
-
 		private class UNet : Module<Tensor, Tensor, Tensor, Tensor>
 		{
 			private readonly int ch;
@@ -398,6 +352,7 @@ namespace StableDiffusionSharp
 
 			public UNet(int model_channels, int in_channels, int[]? channel_mult = null, int num_res_blocks = 2, int num_atten_blocks = 1, int context_dim = 768, int num_heads = 8, float dropout = 0.0f, bool use_timestep = true) : base(nameof(UNet))
 			{
+				bool mask = false;
 				channel_mult = channel_mult ?? [1, 2, 4, 4];
 
 				this.ch = model_channels;
@@ -536,6 +491,12 @@ namespace StableDiffusionSharp
 
 		public override Tensor forward(Tensor latent, Tensor context, Tensor time)
 		{
+			Device device = model.parameters().First().device;
+			ScalarType dtype = model.parameters().First().dtype;
+
+			latent = latent.to(dtype, device);
+			time = time.to(dtype, device);
+			context = context.to(dtype, device);
 			return model.forward(latent, context, time);
 		}
 	}
@@ -557,7 +518,7 @@ namespace StableDiffusionSharp
 			private readonly Sequential @out;
 
 
-			public UNet(int model_channels, int in_channels, int[]? channel_mult = null, int num_res_blocks = 2, int context_dim = 768, int adm_in_channels = 2816, int num_heads = 8, float dropout = 0.0f, bool use_timestep = true) : base(nameof(Diffusion))
+			public UNet(int model_channels, int in_channels, int[]? channel_mult = null, int num_res_blocks = 2, int context_dim = 768, int adm_in_channels = 2816, int num_heads = 20, float dropout = 0.0f, bool use_timestep = true) : base(nameof(Diffusion))
 			{
 				channel_mult = channel_mult ?? [1, 2, 4, 4];
 
@@ -567,6 +528,7 @@ namespace StableDiffusionSharp
 				this.use_timestep = use_timestep;
 
 				bool useLinear = true;
+				bool mask = false;
 
 				List<int> input_block_channels = [model_channels];
 
@@ -585,25 +547,25 @@ namespace StableDiffusionSharp
 				input_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(320, 320)));
 				input_blocks.Add(new TimestepEmbedSequential(new Downsample(320)));
 
-				input_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(320, 640), new SpatialTransformer(640, 2048, 20, 2, 0, useLinear)));
-				input_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(640, 640), new SpatialTransformer(640, 2048, 20, 2, 0, useLinear)));
+				input_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(320, 640), new SpatialTransformer(640, 2048, num_heads, 2, 0, useLinear)));
+				input_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(640, 640), new SpatialTransformer(640, 2048, num_heads, 2, 0, useLinear)));
 				input_blocks.Add(new TimestepEmbedSequential(new Downsample(640)));
 
-				input_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(640, 1280), new SpatialTransformer(1280, 2048, 20, 10, 0, useLinear)));
-				input_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(1280, 1280), new SpatialTransformer(1280, 2048, 20, 10, 0, useLinear)));
+				input_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(640, 1280), new SpatialTransformer(1280, 2048, num_heads, 10, 0, useLinear)));
+				input_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(1280, 1280), new SpatialTransformer(1280, 2048, num_heads, 10, 0, useLinear)));
 
 				// mid_block
-				middle_block = (new TimestepEmbedSequential(new ResnetBlock(1280, 1280), new SpatialTransformer(1280, 2048, 20, 10, 0, useLinear), new ResnetBlock(1280, 1280)));
+				middle_block = (new TimestepEmbedSequential(new ResnetBlock(1280, 1280), new SpatialTransformer(1280, 2048, num_heads, 10, 0, useLinear), new ResnetBlock(1280, 1280)));
 
 				// upsampling
 				this.output_blocks = new ModuleList<TimestepEmbedSequential>();
-				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(2560, 1280), new SpatialTransformer(1280, 2048, 20, 10, 0, useLinear)));
-				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(2560, 1280), new SpatialTransformer(1280, 2048, 20, 10, 0, useLinear)));
-				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(1920, 1280), new SpatialTransformer(1280, 2048, 20, 10, 0, useLinear), new Upsample(1280)));
+				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(2560, 1280), new SpatialTransformer(1280, 2048, num_heads, 10, 0, useLinear)));
+				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(2560, 1280), new SpatialTransformer(1280, 2048, num_heads, 10, 0, useLinear)));
+				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(1920, 1280), new SpatialTransformer(1280, 2048, num_heads, 10, 0, useLinear), new Upsample(1280)));
 
-				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(1920, 640), new SpatialTransformer(640, 2048, 20, 2, 0, useLinear)));
-				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(1280, 640), new SpatialTransformer(640, 2048, 20, 2, 0, useLinear)));
-				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(960, 640), new SpatialTransformer(640, 2048, 20, 2, 0, useLinear), new Upsample(640)));
+				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(1920, 640), new SpatialTransformer(640, 2048, num_heads, 2, 0, useLinear)));
+				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(1280, 640), new SpatialTransformer(640, 2048, num_heads, 2, 0, useLinear)));
+				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(960, 640), new SpatialTransformer(640, 2048, num_heads, 2, 0, useLinear), new Upsample(640)));
 
 				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(960, 320)));
 				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(640, 320)));
@@ -647,7 +609,7 @@ namespace StableDiffusionSharp
 		private class Model : Module<Tensor, Tensor, Tensor, Tensor, Tensor>
 		{
 			private UNet diffusion_model;
-			public Model(int model_channels, int in_channels, int num_heads = 8, int context_dim = 2048, int adm_in_channels = 2816, float dropout = 0.0f, bool use_timestep = true) : base(nameof(Diffusion))
+			public Model(int model_channels, int in_channels, int num_heads = 20, int context_dim = 2048, int adm_in_channels = 2816, float dropout = 0.0f, bool use_timestep = true) : base(nameof(Diffusion))
 			{
 				diffusion_model = new UNet(model_channels, in_channels, context_dim: context_dim, adm_in_channels: adm_in_channels, num_heads: num_heads, dropout: dropout, use_timestep: use_timestep);
 				RegisterComponents();
@@ -670,6 +632,14 @@ namespace StableDiffusionSharp
 
 		public override Tensor forward(Tensor latent, Tensor context, Tensor time, Tensor y)
 		{
+			Device device = model.parameters().First().device;
+			ScalarType dtype = model.parameters().First().dtype;
+
+			latent = latent.to(dtype, device);
+			time = time.to(dtype, device);
+			y = y.to(dtype, device);
+			context = context.to(dtype, device);
+
 			latent = model.forward(latent, context, time, y);
 			return latent;
 		}

@@ -353,6 +353,9 @@ namespace StableDiffusionSharp
 
 			public override Tensor forward(Tensor latents)
 			{
+				Device device = first_stage_model.parameters().First().device;
+				ScalarType dtype = first_stage_model.parameters().First().dtype;
+				latents = latents.to(dtype, device);
 				return first_stage_model.forward(latents);
 			}
 		}
@@ -369,6 +372,9 @@ namespace StableDiffusionSharp
 
 			public override Tensor forward(Tensor input)
 			{
+				Device device = first_stage_model.parameters().First().device;
+				ScalarType dtype = first_stage_model.parameters().First().dtype;
+				input = input.to(dtype, device);
 				return first_stage_model.forward(input);
 			}
 		}

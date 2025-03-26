@@ -28,6 +28,35 @@ namespace StableDiffusionSharp.Sampler
 			return sample / torch.sqrt(torch.pow(sigma, 2) + 1);
 		}
 
+		/// <summary>
+		/// Get the scalings for the given step index
+		/// </summary>
+		/// <param name="step_index"></param>
+		/// <returns>Tensor c_out, Tensor c_in</returns>
+		public (Tensor, Tensor) GetScalings(int step_index)
+		{
+			Tensor sigma = Sigmas[step_index];
+			Tensor c_out = -sigma;
+			Tensor c_in = 1 / torch.sqrt(torch.pow(sigma, 2) + 1);
+			return (c_out, c_in);
+		}
+		public Tensor append_dims(Tensor x, long target_dims)
+		{
+			long dims_to_append = target_dims - x.ndim;
+			if (dims_to_append < 0)
+			{
+				throw new ArgumentException("target_dims must be greater than x.ndim");
+			}
+			long[] dims = x.shape;
+			for (int i = 0; i < dims_to_append; i++)
+			{
+				dims.Append(1);
+			}
+			return x.view(dims);
+		}
+
+
+
 		public void SetTimesteps(long num_inference_steps)
 		{
 			if (num_inference_steps < 1)

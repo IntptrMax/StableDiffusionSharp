@@ -19,7 +19,7 @@ namespace StableDiffusionSharp
 		private int in_channels = 4;
 		private int model_channels = 320;
 		private int context_dim = 2048;
-		private int num_head = 8;
+		private int num_head = 20;
 		private float dropout = 0.0f;
 		private int adm_in_channels = 2816;
 
@@ -57,6 +57,7 @@ namespace StableDiffusionSharp
 
 		private int tempPromptHash;
 		private Tensor tempTextContext;
+		private Tensor tempVector;
 
 		bool is_loaded = false;
 
@@ -72,10 +73,14 @@ namespace StableDiffusionSharp
 			this.device = new Device((DeviceType)deviceType);
 			this.dtype = (ScalarType)scalarType;
 			torchvision.io.DefaultImager = new torchvision.io.SkiaImager();
-			cliper = new Clip.SDXLCliper().to(device, dtype);
-			diffusion = new SDXLDiffusion(model_channels, in_channels, num_head, context_dim, adm_in_channels, dropout).to(device, dtype);
-			decoder = new VAE.Decoder(embed_dim: embed_dim, z_channels: z_channels).to(device, dtype);
-			encoder = new VAE.Encoder(embed_dim: embed_dim, z_channels: z_channels, double_z: double_z).to(device, dtype);
+			cliper = new Clip.SDXLCliper().to(float32).to(CPU);
+			cliper.eval();
+			diffusion = new SDXLDiffusion(model_channels, in_channels, num_head, context_dim, adm_in_channels, dropout).to(dtype).to(device);
+			diffusion.eval();
+			decoder = new VAE.Decoder(embed_dim: embed_dim, z_channels: z_channels).to(float32).to(CPU);
+			decoder.eval();
+			encoder = new VAE.Encoder(embed_dim: embed_dim, z_channels: z_channels, double_z: double_z).to(float32).to(CPU);
+			encoder.eval();
 		}
 
 		public void LoadModel(string modelPath, string vocabPath = @".\models\clip\vocab.json", string mergesPath = @".\models\clip\merges.txt")
@@ -88,20 +93,9 @@ namespace StableDiffusionSharp
 			};
 
 			var (diffusion_missing, diffusion_error) = diffusion.load_state_dict(state_dict, strict: false);
-			diffusion.to(device, dtype);
-			diffusion.eval();
-
 			var (cliper_missing, cliper_error) = cliper.load_state_dict(state_dict, strict: false);
-			cliper.to(device, dtype);
-			cliper.eval();
-
 			var (decoder_missing, decoder_error) = decoder.load_state_dict(state_dict, strict: false);
-			decoder.to(device, dtype);
-			decoder.eval();
-
 			var (encoder_missing, encoder_error) = encoder.load_state_dict(state_dict, strict: false);
-			encoder.to(device, dtype);
-			encoder.eval();
 
 			if (cliper_missing.Count + diffusion_missing.Count + decoder_missing.Count + encoder_missing.Count > 0)
 			{
@@ -123,7 +117,7 @@ namespace StableDiffusionSharp
 					Console.WriteLine(key);
 				}
 			}
-
+			state_dict.Clear();
 			tokenizer = new Tokenizer(vocabPath, mergesPath);
 			is_loaded = true;
 		}
@@ -136,23 +130,24 @@ namespace StableDiffusionSharp
 			}
 		}
 
-		private Tensor Clip(string prompt, string nprompt)
+		private (Tensor, Tensor) Clip(string prompt, string nprompt)
 		{
 			CheckModelLoaded();
 			if (tempPromptHash != (prompt + nprompt).GetHashCode())
 			{
-				Tensor cond_tokens = tokenizer.Tokenize(prompt).to(device);
-				Tensor cond_context = cliper.forward(cond_tokens);
-				Tensor uncond_tokens = tokenizer.Tokenize(nprompt).to(device);
-				Tensor uncond_context = cliper.forward(uncond_tokens);
+				Tensor cond_tokens = tokenizer.Tokenize(prompt);
+				(Tensor cond_context, Tensor cond_vector) = cliper.forward(cond_tokens);
+				Tensor uncond_tokens = tokenizer.Tokenize(nprompt);
+				(Tensor uncond_context, Tensor uncond_vector) = cliper.forward(uncond_tokens);
 				Tensor context = torch.cat([cond_context, uncond_context]);
 				this.tempPromptHash = (prompt + nprompt).GetHashCode();
 				this.tempTextContext = context;
-				return (context);
+				this.tempVector = torch.cat([cond_vector, uncond_vector]);
+				return (context, tempVector);
 			}
 			else
 			{
-				return this.tempTextContext;
+				return (this.tempTextContext, this.tempVector);
 			}
 		}
 
@@ -198,7 +193,19 @@ namespace StableDiffusionSharp
 
 				Stopwatch sp = Stopwatch.StartNew();
 				Console.WriteLine("Clip is doing......");
-				Tensor context = Clip(prompt, nprompt);
+				(Tensor context, Tensor vector) = Clip(prompt, nprompt);
+
+				Tensor cond_cross = Tools.LoadTensorFromPT(@"D:\DeepLearning\AIPainting\StableDiffusion\WebUI\crossattn.pt", context).unsqueeze(0);
+				Tensor uncond_cross = Tools.LoadTensorFromPT(@"D:\DeepLearning\AIPainting\StableDiffusion\WebUI\uc_crossattn.pt", context).unsqueeze(0);
+				Tensor cond_vector = Tools.LoadTensorFromPT(@"D:\DeepLearning\AIPainting\StableDiffusion\WebUI\vector.pt", context).unsqueeze(0);
+				Tensor uncond_vector = Tools.LoadTensorFromPT(@"D:\DeepLearning\AIPainting\StableDiffusion\WebUI\uc_vector.pt", context).unsqueeze(0);
+
+				Tensor cond = context.to(dtype, device);
+				Tensor vct = vector.to(dtype, device);
+
+				context = torch.cat([cond_cross, uncond_cross]);
+				vector = torch.cat([cond_vector, uncond_vector]);
+
 				Console.WriteLine("Getting latents......");
 				var latents = torch.randn([1, 4, height, width]).to(dtype, device);
 
@@ -209,7 +216,6 @@ namespace StableDiffusionSharp
 					_ => throw new ArgumentException("Unknown sampler type")
 				};
 
-
 				sampler.SetTimesteps(steps);
 				latents *= sampler.InitNoiseSigma();
 				Console.WriteLine($"begin sampling");
@@ -218,11 +224,11 @@ namespace StableDiffusionSharp
 					Console.WriteLine($"steps:" + (i + 1));
 					Tensor timestep = sampler.Timesteps[i];
 					Tensor time_embedding = GetTimeEmbedding(timestep).to(dtype, device);
+
 					Tensor input_latents = sampler.ScaleModelInput(latents, i);
 					input_latents = input_latents.repeat(2, 1, 1, 1);
-					Tensor cond_vector = torch.randn([2, adm_in_channels], dtype, device);
 
-					Tensor output = diffusion.forward(input_latents, context, time_embedding, cond_vector);
+					Tensor output = diffusion.forward(input_latents, context, time_embedding, vector);
 					Tensor[] ret = output.chunk(2);
 					Tensor output_cond = ret[0];
 					Tensor output_uncond = ret[1];
@@ -268,7 +274,7 @@ namespace StableDiffusionSharp
 				torch.set_rng_state(generator.get_state());
 
 				Console.WriteLine("Clip is doing......");
-				Tensor context = Clip(prompt, nprompt);
+				(Tensor context, Tensor pooled) = Clip(prompt, nprompt);
 
 				Console.WriteLine("Getting latents......");
 				Tensor inputTensor = Tools.GetTensorFromImage(orgImage).unsqueeze(0);
@@ -316,7 +322,7 @@ namespace StableDiffusionSharp
 				}
 				Console.WriteLine($"end sampling");
 				Console.WriteLine($"begin decoder");
-				latents = latents / scale_factor;
+				//latents = latents / scale_factor;
 				Tensor image = decoder.forward(latents);
 				Console.WriteLine($"end decoder");
 

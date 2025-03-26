@@ -15,6 +15,8 @@ namespace StableDiffusionSharp
 		private int num_timesteps_cond = 1;
 		private int timesteps = 1000;
 
+		private int num_skip = 2;
+
 		// UNet config
 		private int in_channels = 4;
 		private int model_channels = 320;
@@ -71,11 +73,14 @@ namespace StableDiffusionSharp
 			this.device = new Device((DeviceType)deviceType);
 			this.dtype = (ScalarType)scalarType;
 			torchvision.io.DefaultImager = new torchvision.io.SkiaImager();
-			cliper = new Clip.SDCliper().to(device, dtype);
-			diffusion = new Diffusion(model_channels, in_channels, num_head, context_dim, dropout).to(device, dtype);
-			decoder = new VAE.Decoder(embed_dim: embed_dim, z_channels: z_channels).to(device, dtype);
-			encoder = new VAE.Encoder(embed_dim: embed_dim, z_channels: z_channels, double_z: double_z).to(device, dtype);
-
+			cliper = new Clip.SDCliper().to(dtype).to(device);
+			cliper.eval();
+			diffusion = new Diffusion(model_channels, in_channels, num_head, context_dim, dropout).to(dtype).to(device);
+			diffusion.eval();
+			decoder = new VAE.Decoder(embed_dim: embed_dim, z_channels: z_channels).to(dtype).to(device);
+			decoder.eval();
+			encoder = new VAE.Encoder(embed_dim: embed_dim, z_channels: z_channels, double_z: double_z).to(dtype).to(device);
+			encoder.eval();
 		}
 
 		public void LoadModel(string modelPath, string vocabPath = @".\models\clip\vocab.json", string mergesPath = @".\models\clip\merges.txt")
@@ -87,22 +92,10 @@ namespace StableDiffusionSharp
 				_ => throw new ArgumentException("Unknown model file extension")
 			};
 
-
 			var (cliper_missing, cliper_error) = cliper.load_state_dict(state_dict, strict: false);
-			cliper.to(device, dtype);
-			cliper.eval();
-
 			var (diffusion_missing, diffusion_error) = diffusion.load_state_dict(state_dict, strict: false);
-			diffusion.to(device, dtype);
-			diffusion.eval();
-
 			var (decoder_missing, decoder_error) = decoder.load_state_dict(state_dict, strict: false);
-			decoder.to(device, dtype);
-			decoder.eval();
-
 			var (encoder_missing, encoder_error) = encoder.load_state_dict(state_dict, strict: false);
-			encoder.to(device, dtype);
-			encoder.eval();
 
 			if (cliper_missing.Count + diffusion_missing.Count + decoder_missing.Count/* + encoder_missing.Count*/ > 0)
 			{
@@ -128,7 +121,7 @@ namespace StableDiffusionSharp
 			tokenizer = new Tokenizer(vocabPath, mergesPath);
 			is_loaded = true;
 
-			//state_dict.Clear();
+			state_dict.Clear();
 			GC.Collect();
 		}
 
@@ -146,9 +139,9 @@ namespace StableDiffusionSharp
 			if (tempPromptHash != (prompt + nprompt).GetHashCode())
 			{
 				Tensor cond_tokens = tokenizer.Tokenize(prompt).to(device);
-				Tensor cond_context = cliper.forward(cond_tokens);
+				Tensor cond_context = cliper.forward(cond_tokens, num_skip, true);
 				Tensor uncond_tokens = tokenizer.Tokenize(nprompt).to(device);
-				Tensor uncond_context = cliper.forward(uncond_tokens);
+				Tensor uncond_context = cliper.forward(uncond_tokens, num_skip, true);
 				Tensor context = torch.cat([cond_context, uncond_context]);
 				this.tempPromptHash = (prompt + nprompt).GetHashCode();
 				this.tempTextContext = context;
@@ -204,7 +197,7 @@ namespace StableDiffusionSharp
 				Console.WriteLine("Clip is doing......");
 				Tensor context = Clip(prompt, nprompt);
 				Console.WriteLine("Getting latents......");
-				var latents = torch.randn([1, 4, height, width]).to(dtype, device);
+				Tensor latents = torch.randn([1, 4, height, width]).to(dtype, device);
 
 				BasicSampler sampler = samplerType switch
 				{
@@ -215,6 +208,7 @@ namespace StableDiffusionSharp
 
 				sampler.SetTimesteps(steps);
 				latents *= sampler.InitNoiseSigma();
+
 				Console.WriteLine($"begin sampling");
 				for (int i = 0; i < steps; i++)
 				{
@@ -303,7 +297,7 @@ namespace StableDiffusionSharp
 					int index = steps - t_enc + i - 1;
 					Console.WriteLine($"steps:" + (i + 1));
 					Tensor timestep = sampler.Timesteps[index];
-					Tensor time_embedding = GetTimeEmbedding(timestep).to(dtype, device);
+					Tensor time_embedding = GetTimeEmbedding(timestep);
 					Tensor input_latents = sampler.ScaleModelInput(latents, index);
 					input_latents = input_latents.repeat(2, 1, 1, 1);
 					Tensor output = diffusion.forward(input_latents, context, time_embedding);
