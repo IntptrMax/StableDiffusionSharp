@@ -82,7 +82,7 @@ namespace StableDiffusionSharp.Sampler
 			{
 				sample = sample + epsilon * (float)Math.Sqrt(Math.Pow(sigma_hat, 2f) - Math.Pow(sigma, 2f));
 			}
-			Tensor pred_original_sample = sample - sigma_hat * model_output;
+			Tensor pred_original_sample = sample - sigma_hat * model_output;  // to_d and sigma is c_out
 			Tensor derivative = (sample - pred_original_sample) / sigma_hat;
 			float dt = Sigmas[step_index + 1].ToSingle() - sigma_hat;
 			return sample + derivative * dt;

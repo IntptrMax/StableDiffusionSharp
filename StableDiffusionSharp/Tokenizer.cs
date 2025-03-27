@@ -69,7 +69,7 @@ namespace StableDiffusionSharp
 		public Tensor Tokenize(string text, int maxTokens = 77)
 		{
 			var res = _tokenizer.EncodeToIds(text);
-			Tensor tokens = torch.zeros([77], ScalarType.Int64);
+			Tensor tokens = torch.full([77], 49407, ScalarType.Int64);
 			tokens[0] = 49406;
 			tokens[-1] = 49407;
 			tokens[1..(res.Count + 1)] = res.ToArray();

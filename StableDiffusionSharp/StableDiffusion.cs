@@ -61,11 +61,20 @@ namespace StableDiffusionSharp
 
 		bool is_loaded = false;
 
-		private static Tensor GetTimeEmbedding(Tensor timestep)
+		private static Tensor GetTimeEmbedding(Tensor timestep, int max_period = 10000, int dim = 320, bool repeat_only = false)
 		{
-			var freqs = torch.pow(10000, -torch.arange(0, 160, dtype: torch.float32) / 160);
-			var x = timestep * freqs.unsqueeze(0);
-			return torch.cat([torch.cos(x), torch.sin(x)], dim: -1);
+			if (repeat_only)
+			{
+				return torch.repeat_interleave(timestep, dim);
+			}
+			else
+			{
+				int half = dim / 2;
+				var freqs = torch.pow(max_period, -torch.arange(0, half, dtype: torch.float32) / half);
+				var x = timestep * freqs.unsqueeze(0);
+				x = torch.cat([x, x]);
+				return torch.cat([torch.cos(x), torch.sin(x)], dim: -1);
+			}
 		}
 
 		public StableDiffusion(SDDeviceType deviceType = SDDeviceType.CUDA, SDScalarType scalarType = SDScalarType.Float16)
@@ -177,12 +186,14 @@ namespace StableDiffusionSharp
 				{
 					throw new ArgumentException("cfg must be greater than 0.1");
 				}
+				if (cfg < 0.5)
+				{
+					throw new ArgumentException("cfg is too small, it may cause the image to be too noisy");
+				}
 
 				seed = seed == 0 ? Random.Shared.NextInt64() : seed;
 				Generator generator = torch.manual_seed(seed);
 				torch.set_rng_state(generator.get_state());
-				steps = steps == 0 ? 20 : steps;
-				cfg = cfg == 0 ? 7.0f : cfg;
 
 				width = (width / 64) * 8;  // must be multiples of 64
 				height = (height / 64) * 8; // must be multiples of 64

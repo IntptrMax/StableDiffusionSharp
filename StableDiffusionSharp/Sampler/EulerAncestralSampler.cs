@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Tensorboard;
-using TorchSharp;
+﻿using TorchSharp;
 using static TorchSharp.torch;
 
 namespace StableDiffusionSharp.Sampler
@@ -32,7 +26,7 @@ namespace StableDiffusionSharp.Sampler
 			Tensor sigmaUp = sigmaUpResult.ToSingle() < 0 ? -torch.pow(torch.abs(sigmaUpResult), 0.5f) : torch.pow(sigmaUpResult, 0.5f);
 			Tensor sigmaDownResult = torch.pow(sigmaTo, 2) - torch.pow(sigmaUp, 2);
 			Tensor sigmaDown = sigmaDownResult.ToSingle() < 0 ? -torch.pow(torch.abs(sigmaDownResult), 0.5f) : torch.pow(sigmaDownResult, 0.5f);
-			Tensor derivative = (sample - predOriginalSample) / sigma;
+			Tensor derivative = (sample - predOriginalSample) / sigma;   // to_d and sigma is c_out
 			Tensor delta = sigmaDown - sigma;
 			Tensor prevSample = sample + derivative * delta;
 			var noise = torch.randn_like(prevSample);

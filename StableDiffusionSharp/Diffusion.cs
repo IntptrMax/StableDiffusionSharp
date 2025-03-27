@@ -43,7 +43,6 @@ namespace StableDiffusionSharp
 				q = q.view(interim_shape).transpose(1, 2);
 				k = k.view(interim_shape).transpose(1, 2);
 				v = v.view(interim_shape).transpose(1, 2);
-
 				Tensor output = torch.nn.functional.scaled_dot_product_attention(q, k, v, is_casual: causal_mask_);
 				output = output.transpose(1, 2).reshape(input_shape);
 				output = to_out.forward(output);
@@ -79,7 +78,7 @@ namespace StableDiffusionSharp
 
 			if (this.in_channels != this.out_channels)
 			{
-				this.skip_connection = torch.nn.Conv2d(in_channels: in_channels, out_channels: this.out_channels, kernel_size: 1);
+				this.skip_connection = torch.nn.Conv2d(in_channels: in_channels, out_channels: this.out_channels, kernel_size: 1, stride: 1);
 			}
 			else
 			{
@@ -159,7 +158,7 @@ namespace StableDiffusionSharp
 
 		public SpatialTransformer(int channels, int n_cross, int n_head, int num_atten_blocks, float drop_out = 0.0f, bool use_linear = false) : base(nameof(SpatialTransformer))
 		{
-			this.norm = GroupNorm(32, channels, 1e-6);
+			this.norm = Normalize(channels);
 			this.use_linear = use_linear;
 			this.proj_in = use_linear ? Linear(channels, channels) : Conv2d(channels, channels, kernel_size: 1);
 			this.proj_out = use_linear ? Linear(channels, channels) : Conv2d(channels, channels, kernel_size: 1);
@@ -216,6 +215,12 @@ namespace StableDiffusionSharp
 				return residue_short.MoveToOuterDisposeScope();
 			}
 		}
+
+		private static GroupNorm Normalize(int in_channels)
+		{
+			return torch.nn.GroupNorm(num_groups: 32, num_channels: in_channels, eps: 1e-6f, affine: true);
+		}
+
 	}
 
 	internal class Upsample : Module<Tensor, Tensor>
@@ -247,13 +252,13 @@ namespace StableDiffusionSharp
 		private readonly Conv2d op;
 		public Downsample(int in_channels) : base(nameof(Downsample))
 		{
-			op = Conv2d(in_channels: in_channels, out_channels: in_channels, kernel_size: 3, stride: 2);
+			op = Conv2d(in_channels: in_channels, out_channels: in_channels, kernel_size: 3, stride: 2, padding: 1);
 			RegisterComponents();
 		}
 		public override Tensor forward(Tensor x)
 		{
-			long[] pad = [0, 1, 0, 1];
-			x = torch.nn.functional.pad(x, pad, mode: PaddingModes.Constant, value: 0);
+			//long[] pad = [0, 1, 0, 1];
+			//x = torch.nn.functional.pad(x, pad, mode: PaddingModes.Constant, value: 0);
 			x = this.op.forward(x);
 			return x;
 		}
@@ -442,26 +447,28 @@ namespace StableDiffusionSharp
 			}
 			public override Tensor forward(Tensor x, Tensor context, Tensor time)
 			{
-				using var _ = NewDisposeScope();
-				time = time_embed.forward(time);
-
-				List<Tensor> skip_connections = new List<Tensor>();
-				foreach (TimestepEmbedSequential layers in input_blocks)
+				using (NewDisposeScope())
 				{
-					x = layers.forward(x, context, time);
-					skip_connections.Add(x);
-				}
-				x = middle_block.forward(x, context, time);
-				foreach (TimestepEmbedSequential layers in output_blocks)
-				{
-					Tensor index = skip_connections.Last();
-					x = torch.cat([x, index], 1);
-					skip_connections.RemoveAt(skip_connections.Count - 1);
-					x = layers.forward(x, context, time);
-				}
+					time = time_embed.forward(time);
 
-				x = @out.forward(x);
-				return x.MoveToOuterDisposeScope();
+					List<Tensor> skip_connections = new List<Tensor>();
+					foreach (TimestepEmbedSequential layers in input_blocks)
+					{
+						x = layers.forward(x, context, time);
+						skip_connections.Add(x);
+					}
+					x = middle_block.forward(x, context, time);
+					foreach (TimestepEmbedSequential layers in output_blocks)
+					{
+						Tensor index = skip_connections.Last();
+						x = torch.cat([x, index], 1);
+						skip_connections.RemoveAt(skip_connections.Count - 1);
+						x = layers.forward(x, context, time);
+					}
+
+					x = @out.forward(x);
+					return x.MoveToOuterDisposeScope();
+				}
 			}
 		}
 
@@ -520,7 +527,7 @@ namespace StableDiffusionSharp
 
 			public UNet(int model_channels, int in_channels, int[]? channel_mult = null, int num_res_blocks = 2, int context_dim = 768, int adm_in_channels = 2816, int num_heads = 20, float dropout = 0.0f, bool use_timestep = true) : base(nameof(Diffusion))
 			{
-				channel_mult = channel_mult ?? [1, 2, 4, 4];
+				channel_mult = channel_mult ?? [1, 2, 4];
 
 				this.ch = model_channels;
 				this.time_embed_dim = model_channels * 4;

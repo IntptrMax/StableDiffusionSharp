@@ -61,11 +61,20 @@ namespace StableDiffusionSharp
 
 		bool is_loaded = false;
 
-		private static Tensor GetTimeEmbedding(Tensor timestep)
+		private static Tensor GetTimeEmbedding(Tensor timestep, int max_period = 10000, int dim = 320, bool repeat_only = false)
 		{
-			var freqs = torch.pow(10000, -torch.arange(0, 160, dtype: torch.float32) / 160);
-			var x = timestep * freqs.unsqueeze(0);
-			return torch.cat([torch.cos(x), torch.sin(x)], dim: -1);
+			if (repeat_only)
+			{
+				return torch.repeat_interleave(timestep, dim);
+			}
+			else
+			{
+				int half = dim / 2;
+				var freqs = torch.pow(max_period, -torch.arange(0, half, dtype: torch.float32) / half);
+				var x = timestep * freqs.unsqueeze(0);
+				x = torch.cat([x, x]);
+				return torch.cat([torch.cos(x), torch.sin(x)], dim: -1);
+			}
 		}
 
 		public SDXL(SDDeviceType deviceType = SDDeviceType.CUDA, SDScalarType scalarType = SDScalarType.Float16)
@@ -135,10 +144,12 @@ namespace StableDiffusionSharp
 			CheckModelLoaded();
 			if (tempPromptHash != (prompt + nprompt).GetHashCode())
 			{
-				Tensor cond_tokens = tokenizer.Tokenize(prompt);
-				(Tensor cond_context, Tensor cond_vector) = cliper.forward(cond_tokens);
 				Tensor uncond_tokens = tokenizer.Tokenize(nprompt);
 				(Tensor uncond_context, Tensor uncond_vector) = cliper.forward(uncond_tokens);
+
+				Tensor cond_tokens = tokenizer.Tokenize(prompt);
+				(Tensor cond_context, Tensor cond_vector) = cliper.forward(cond_tokens);
+
 				Tensor context = torch.cat([cond_context, uncond_context]);
 				this.tempPromptHash = (prompt + nprompt).GetHashCode();
 				this.tempTextContext = context;
@@ -175,12 +186,14 @@ namespace StableDiffusionSharp
 				{
 					throw new ArgumentException("cfg must be greater than 0.1");
 				}
+				if (cfg < 0.5)
+				{
+					throw new ArgumentException("cfg is too small, it may cause the model to be unstable");
+				}
 
 				seed = seed == 0 ? Random.Shared.NextInt64() : seed;
 				Generator generator = torch.manual_seed(seed);
 				torch.set_rng_state(generator.get_state());
-				steps = steps == 0 ? 20 : steps;
-				cfg = cfg == 0 ? 7.0f : cfg;
 
 				width = (width / 64) * 8;  // must be multiples of 64
 				height = (height / 64) * 8; // must be multiples of 64
@@ -195,19 +208,8 @@ namespace StableDiffusionSharp
 				Console.WriteLine("Clip is doing......");
 				(Tensor context, Tensor vector) = Clip(prompt, nprompt);
 
-				Tensor cond_cross = Tools.LoadTensorFromPT(@"D:\DeepLearning\AIPainting\StableDiffusion\WebUI\crossattn.pt", context).unsqueeze(0);
-				Tensor uncond_cross = Tools.LoadTensorFromPT(@"D:\DeepLearning\AIPainting\StableDiffusion\WebUI\uc_crossattn.pt", context).unsqueeze(0);
-				Tensor cond_vector = Tools.LoadTensorFromPT(@"D:\DeepLearning\AIPainting\StableDiffusion\WebUI\vector.pt", context).unsqueeze(0);
-				Tensor uncond_vector = Tools.LoadTensorFromPT(@"D:\DeepLearning\AIPainting\StableDiffusion\WebUI\uc_vector.pt", context).unsqueeze(0);
-
-				Tensor cond = context.to(dtype, device);
-				Tensor vct = vector.to(dtype, device);
-
-				context = torch.cat([cond_cross, uncond_cross]);
-				vector = torch.cat([cond_vector, uncond_vector]);
-
 				Console.WriteLine("Getting latents......");
-				var latents = torch.randn([1, 4, height, width]).to(dtype, device);
+				Tensor latents = torch.randn([1, 4, height, width]).to(dtype, device);
 
 				BasicSampler sampler = samplerType switch
 				{
@@ -218,22 +220,22 @@ namespace StableDiffusionSharp
 
 				sampler.SetTimesteps(steps);
 				latents *= sampler.InitNoiseSigma();
+
 				Console.WriteLine($"begin sampling");
 				for (int i = 0; i < steps; i++)
 				{
 					Console.WriteLine($"steps:" + (i + 1));
 					Tensor timestep = sampler.Timesteps[i];
 					Tensor time_embedding = GetTimeEmbedding(timestep).to(dtype, device);
-
 					Tensor input_latents = sampler.ScaleModelInput(latents, i);
 					input_latents = input_latents.repeat(2, 1, 1, 1);
+					Tensor x_out = diffusion.forward(input_latents, context, time_embedding, vector);
 
-					Tensor output = diffusion.forward(input_latents, context, time_embedding, vector);
-					Tensor[] ret = output.chunk(2);
+					Tensor[] ret = x_out.chunk(2);
 					Tensor output_cond = ret[0];
 					Tensor output_uncond = ret[1];
-					output = cfg * (output_cond - output_uncond) + output_uncond;
-					latents = sampler.Step(output, i, latents, seed);
+					Tensor noisePred = cfg * (output_cond - output_uncond) + output_uncond;
+					latents = sampler.Step(noisePred, i, latents, seed);
 					//OnStepProgress(i + 1, steps);
 				}
 
