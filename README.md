@@ -14,6 +14,7 @@ StableDiffusionSharp is an image generating software. With the help of torchshar
 - Use SDPA for speed-up and save vram.
 - Text2Image support.
 - SD1.5 support.
+- SDXL support.
 - Image2Image support.
 - Esrgan 4x support.
 - Nuget package.
@@ -24,7 +25,6 @@ For SD1.5 Text to Image, it cost about 3G VRAM and 2.4 seconds for Generating a 
 
 - Lora support.
 - Tiled VAE.
-- SDXL support.
 
 ## How to use
 
@@ -42,10 +42,16 @@ If you want to use esrgan for upscaling, you have to download model from [RealES
 Now you can use it like the code below.
 
     string modelPath = @".\sunshinemix.safetensors";
+    string sdxlModelPath = @".\juggernautXL.safetensors";
     string esrganModelPath = @".\RealESRGAN_x4plus.pth";
     string prompt = "High quality, best quality, sunset on sea, beach, tree.";
     string nprompt = "Bad quality, worst quality.";
     string i2iPrompt = "High quality, best quality, moon, grass, tree, boat.";
+
+    SDXL sdxl = new SDXL(deviceType, scalarType);
+	sdxl.LoadModel(sdxlModelPath);
+	ImageMagick.MagickImage sdxlT2Image = sdxl.TextToImage(prompt, nprompt);
+	sdxlT2Image.Write("output_sdxl_t2i.png");
 
     StableDiffusion sd = new StableDiffusion();
     sd.LoadModel(modelPath);

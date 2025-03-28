@@ -172,7 +172,7 @@ namespace StableDiffusionSharp
 		/// <param name="steps">Step to generate image</param>
 		/// <param name="seed">Random seed for generating image, it will get random when the value is 0</param>
 		/// <param name="cfg">Classifier Free Guidance</param>
-		public ImageMagick.MagickImage TextToImage(string prompt, string nprompt, int width = 512, int height = 512, int steps = 20, long seed = 0, float cfg = 7.0f, SDSamplerType samplerType = SDSamplerType.Euler)
+		public ImageMagick.MagickImage TextToImage(string prompt, string nprompt = "", int width = 512, int height = 512, int steps = 20, long seed = 0, float cfg = 7.0f, SDSamplerType samplerType = SDSamplerType.Euler)
 		{
 			CheckModelLoaded();
 
@@ -261,7 +261,7 @@ namespace StableDiffusionSharp
 		}
 
 
-		public ImageMagick.MagickImage ImageToImage(ImageMagick.MagickImage orgImage, string prompt, string nprompt, int steps = 20, float strength = 0.75f, long seed = 0, long subSeed = 0, float cfg = 7.0f, SDSamplerType samplerType = SDSamplerType.Euler)
+		public ImageMagick.MagickImage ImageToImage(ImageMagick.MagickImage orgImage, string prompt, string nprompt = "", int steps = 20, float strength = 0.75f, long seed = 0, long subSeed = 0, float cfg = 7.0f, SDSamplerType samplerType = SDSamplerType.Euler)
 		{
 			CheckModelLoaded();
 
