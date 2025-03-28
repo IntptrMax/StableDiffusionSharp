@@ -499,9 +499,13 @@ namespace StableDiffusionSharp
 				{
 					using (NewDisposeScope())
 					{
-						Tensor index = ((token - torch.full_like(token, 49407)) == 0);
-						Tensor token2 = token * ~index;
+						List<long> cond = token.data<long>().ToList();
+						cond.RemoveAll(a => a == 49407);
+						cond.Add(49407);
+						Tensor token2 = torch.zeros_like(token);
+						token2.data<long>().CopyFrom(cond.ToArray());
 
+						
 						Tensor vit_l_result = ((ViT_L_Clip)embedders[0]).forward(token, 2, false);
 						Tensor vit_bigG_result = ((Model)embedders[1]).forward(token2, 2, false, false);
 						Tensor vit_bigG_vec = ((Model)embedders[1]).forward(token2, 0, false, true);

@@ -151,11 +151,11 @@ namespace StableDiffusionSharp
 				using (torch.no_grad())
 				using (NewDisposeScope())
 				{
-					Tensor uncond_tokens = tokenizer.Tokenize(nprompt);
-					(Tensor uncond_context, Tensor uncond_vector) = cliper.forward(uncond_tokens);
-
 					Tensor cond_tokens = tokenizer.Tokenize(prompt);
 					(Tensor cond_context, Tensor cond_vector) = cliper.forward(cond_tokens);
+
+					Tensor uncond_tokens = tokenizer.Tokenize(nprompt);
+					(Tensor uncond_context, Tensor uncond_vector) = cliper.forward(uncond_tokens);
 
 					Tensor context = torch.cat([cond_context, uncond_context]);
 					this.tempPromptHash = (prompt + nprompt).GetHashCode();

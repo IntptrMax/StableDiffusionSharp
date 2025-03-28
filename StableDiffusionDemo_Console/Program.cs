@@ -6,7 +6,7 @@ namespace StableDiffusionDemo_Console
 	{
 		static void Main(string[] args)
 		{
-			string modelPath = @".\tPonynai3_v4.safetensors";
+			string modelPath = @".\juggernautXL.safetensors";
 			// modelPath = @"Chilloutmix.safetensors";
 			string esrganModelPath = @".\RealESRGAN_x4plus.pth";
 			string prompt = "High quality, best quality, realistic, beach, trees, sunset on sea.";
