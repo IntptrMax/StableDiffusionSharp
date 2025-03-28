@@ -228,11 +228,11 @@ namespace StableDiffusionSharp
 
 			private class CLIPEncoder : Module<Tensor, long, Tensor>
 			{
-				private readonly Sequential layers;
+				private readonly ModuleList<CLIPEncoderLayer> layers;
 
 				public CLIPEncoder(long num_layers, long embed_dim, long heads, long intermediate_size, Activations intermediate_activation) : base(nameof(CLIPEncoder))
 				{
-					layers = Sequential();
+					layers = new ModuleList<CLIPEncoderLayer>();
 					for (int i = 0; i < num_layers; i++)
 					{
 						layers.append(new CLIPEncoderLayer(heads, embed_dim, intermediate_size, intermediate_activation));
@@ -243,17 +243,17 @@ namespace StableDiffusionSharp
 				public override Tensor forward(Tensor x, long num_skip)
 				{
 					long num_act = num_skip > 0 ? (layers.Count - num_skip) : layers.Count;
-					for (long i = 0; i < num_act; i++)
+					for (int i = 0; i < num_act; i++)
 					{
-						x = ((CLIPEncoderLayer)(layers.children().ToArray()[i])).forward(x);
+						x = layers[i].forward(x);
 					}
-					//return layers.forward(x);
+
 					return x;
 				}
 			}
 		}
 
-		private class ViT_bigG_Clip : Module<Tensor, long, bool, bool, Tensor>
+		private class ViT_bigG_Clip : Module<Tensor, int, bool, bool, Tensor>
 		{
 			private readonly int adm_in_channels;
 
@@ -274,17 +274,17 @@ namespace StableDiffusionSharp
 				RegisterComponents();
 			}
 
-			public override Tensor forward(Tensor x, long num_skip, bool with_final_ln, bool with_pool)
+			public override Tensor forward(Tensor x, int num_skip, bool with_final_ln, bool return_pooled)
 			{
 				x = token_embedding.forward(x) + positional_embedding;
 				x = transformer.forward(x, num_skip);
-				if (with_final_ln || with_pool)
+				if (with_final_ln || return_pooled)
 				{
 					x = ln_final.forward(x);
 				}
-				if (with_pool)
+				if (return_pooled)
 				{
-					x = x[.., -1, ..];
+					x = x[.., 6, ..];
 					x = torch.nn.functional.linear(x, text_projection);
 					long padLength = this.adm_in_channels - x.shape[1];
 					x = torch.nn.functional.pad(x, [0, padLength, 0, 0]);
@@ -293,12 +293,12 @@ namespace StableDiffusionSharp
 				return x;
 			}
 
-			private class Transformer : Module<Tensor, long, Tensor>
+			private class Transformer : Module<Tensor, int, Tensor>
 			{
-				private readonly Sequential resblocks;
+				private readonly ModuleList<ResidualAttentionBlock> resblocks;
 				public Transformer(long num_layers, long embed_dim, long heads, long intermediate_size, Activations intermediate_activation) : base(nameof(Transformer))
 				{
-					resblocks = Sequential();
+					resblocks = new ModuleList<ResidualAttentionBlock>();
 					for (int i = 0; i < num_layers; i++)
 					{
 						resblocks.append(new ResidualAttentionBlock(heads, embed_dim, intermediate_size, intermediate_activation));
@@ -306,14 +306,13 @@ namespace StableDiffusionSharp
 					RegisterComponents();
 				}
 
-				public override Tensor forward(Tensor x, long num_skip)
+				public override Tensor forward(Tensor x, int num_skip)
 				{
-					long num_act = num_skip > 0 ? (resblocks.Count - num_skip) : resblocks.Count;
-					for (long i = 0; i < num_act; i++)
+					int num_act = num_skip > 0 ? (resblocks.Count - num_skip) : resblocks.Count;
+					for (int i = 0; i < num_act; i++)
 					{
-						x = ((ResidualAttentionBlock)(resblocks.children().ToArray()[i])).forward(x);
+						x = resblocks[i].forward(x);
 					}
-					//return resblocks.forward(x);
 					return x;
 				}
 			}
@@ -500,15 +499,18 @@ namespace StableDiffusionSharp
 				{
 					using (NewDisposeScope())
 					{
+						Tensor index = ((token - torch.full_like(token, 49407)) == 0);
+						Tensor token2 = token * ~index;
+
 						Tensor vit_l_result = ((ViT_L_Clip)embedders[0]).forward(token, 2, false);
-						Tensor vit_bigG_result = ((Model)embedders[1]).forward(token, 2, false, false);
-						Tensor vit_bigG_vec = ((Model)embedders[1]).forward(token, 0, false, true);
+						Tensor vit_bigG_result = ((Model)embedders[1]).forward(token2, 2, false, false);
+						Tensor vit_bigG_vec = ((Model)embedders[1]).forward(token2, 0, false, true);
 						return (cat([vit_l_result, vit_bigG_result], 2).MoveToOuterDisposeScope(), vit_bigG_vec.MoveToOuterDisposeScope());
 					}
 				}
 			}
 
-			private class Model : Module<Tensor, long, bool, bool, Tensor>
+			private class Model : Module<Tensor, int, bool, bool, Tensor>
 			{
 				private readonly ViT_bigG_Clip model;
 				public Model() : base(nameof(Model))
@@ -516,9 +518,9 @@ namespace StableDiffusionSharp
 					model = new ViT_bigG_Clip();
 					RegisterComponents();
 				}
-				public override Tensor forward(Tensor token, long num_skip, bool with_final_ln, bool with_pool)
+				public override Tensor forward(Tensor token, int num_skip, bool with_final_ln, bool return_pooled)
 				{
-					return model.forward(token, num_skip, with_final_ln, with_pool);
+					return model.forward(token, num_skip, with_final_ln, return_pooled);
 				}
 			}
 		}

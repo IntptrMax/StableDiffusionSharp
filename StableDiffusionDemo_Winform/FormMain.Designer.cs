@@ -332,7 +332,7 @@
 			Controls.Add(tabControl1);
 			Controls.Add(groupBox1);
 			Name = "FormMain";
-			Text = "Stabel Diffusion Sharp";
+			Text = "Stabel SDUnet Sharp";
 			Load += FormMain_Load;
 			groupBox1.ResumeLayout(false);
 			groupBox1.PerformLayout();

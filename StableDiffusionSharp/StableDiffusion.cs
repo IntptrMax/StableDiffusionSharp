@@ -48,7 +48,7 @@ namespace StableDiffusionSharp
 		}
 
 		private readonly Clip.SDCliper cliper;
-		private readonly Diffusion diffusion;
+		private readonly SDUnet diffusion;
 		private readonly VAE.Decoder decoder;
 		private readonly VAE.Encoder encoder;
 		private Tokenizer tokenizer;
@@ -84,7 +84,7 @@ namespace StableDiffusionSharp
 			torchvision.io.DefaultImager = new torchvision.io.SkiaImager();
 			cliper = new Clip.SDCliper().to(dtype).to(device);
 			cliper.eval();
-			diffusion = new Diffusion(model_channels, in_channels, num_head, context_dim, dropout).to(dtype).to(device);
+			diffusion = new SDUnet(model_channels, in_channels, num_head, context_dim, dropout).to(dtype).to(device);
 			diffusion.eval();
 			decoder = new VAE.Decoder(embed_dim: embed_dim, z_channels: z_channels).to(dtype).to(device);
 			decoder.eval();

@@ -195,7 +195,7 @@ namespace StableDiffusionSharp
 					x = this.proj_in.forward(x);
 				}
 
-				foreach (Module<Tensor, Tensor, Tensor> layer in transformer_blocks.children())
+				foreach (Module<Tensor, Tensor, Tensor> layer in transformer_blocks)
 				{
 					x = layer.forward(x, context);
 				}
@@ -340,7 +340,7 @@ namespace StableDiffusionSharp
 		}
 	}
 
-	internal class Diffusion : Module<Tensor, Tensor, Tensor, Tensor>
+	internal class SDUnet : Module<Tensor, Tensor, Tensor, Tensor>
 	{
 		private class UNet : Module<Tensor, Tensor, Tensor, Tensor>
 		{
@@ -476,7 +476,7 @@ namespace StableDiffusionSharp
 		{
 			private readonly UNet diffusion_model;
 
-			public Model(int model_channels, int in_channels, int num_heads = 8, int context_dim = 768, float dropout = 0.0f, bool use_timestep = true) : base(nameof(Diffusion))
+			public Model(int model_channels, int in_channels, int num_heads = 8, int context_dim = 768, float dropout = 0.0f, bool use_timestep = true) : base(nameof(SDUnet))
 			{
 				diffusion_model = new UNet(model_channels, in_channels, context_dim: context_dim, num_heads: num_heads, dropout: dropout, use_timestep: use_timestep);
 				RegisterComponents();
@@ -490,7 +490,7 @@ namespace StableDiffusionSharp
 
 		private readonly Model model;
 
-		public Diffusion(int model_channels, int in_channels, int num_heads = 8, int context_dim = 768, float dropout = 0.0f, bool use_timestep = true) : base(nameof(Diffusion))
+		public SDUnet(int model_channels, int in_channels, int num_heads = 8, int context_dim = 768, float dropout = 0.0f, bool use_timestep = true) : base(nameof(SDUnet))
 		{
 			model = new Model(model_channels, in_channels, context_dim: context_dim, num_heads: num_heads, dropout: dropout, use_timestep: use_timestep);
 			RegisterComponents();
@@ -508,7 +508,7 @@ namespace StableDiffusionSharp
 		}
 	}
 
-	internal class SDXLDiffusion : Module<Tensor, Tensor, Tensor, Tensor, Tensor>
+	internal class SDXLUnet : Module<Tensor, Tensor, Tensor, Tensor, Tensor>
 	{
 		private class UNet : Module<Tensor, Tensor, Tensor, Tensor, Tensor>
 		{
@@ -525,7 +525,7 @@ namespace StableDiffusionSharp
 			private readonly Sequential @out;
 
 
-			public UNet(int model_channels, int in_channels, int[]? channel_mult = null, int num_res_blocks = 2, int context_dim = 768, int adm_in_channels = 2816, int num_heads = 20, float dropout = 0.0f, bool use_timestep = true) : base(nameof(Diffusion))
+			public UNet(int model_channels, int in_channels, int[]? channel_mult = null, int num_res_blocks = 2, int context_dim = 768, int adm_in_channels = 2816, int num_heads = 20, float dropout = 0.0f, bool use_timestep = true) : base(nameof(SDUnet))
 			{
 				channel_mult = channel_mult ?? [1, 2, 4];
 
@@ -616,7 +616,7 @@ namespace StableDiffusionSharp
 		private class Model : Module<Tensor, Tensor, Tensor, Tensor, Tensor>
 		{
 			private UNet diffusion_model;
-			public Model(int model_channels, int in_channels, int num_heads = 20, int context_dim = 2048, int adm_in_channels = 2816, float dropout = 0.0f, bool use_timestep = true) : base(nameof(Diffusion))
+			public Model(int model_channels, int in_channels, int num_heads = 20, int context_dim = 2048, int adm_in_channels = 2816, float dropout = 0.0f, bool use_timestep = true) : base(nameof(SDUnet))
 			{
 				diffusion_model = new UNet(model_channels, in_channels, context_dim: context_dim, adm_in_channels: adm_in_channels, num_heads: num_heads, dropout: dropout, use_timestep: use_timestep);
 				RegisterComponents();
@@ -631,7 +631,7 @@ namespace StableDiffusionSharp
 
 		private readonly Model model;
 
-		public SDXLDiffusion(int model_channels, int in_channels, int num_heads = 20, int context_dim = 2048, int adm_in_channels = 2816, float dropout = 0.0f, bool use_timestep = true) : base(nameof(Diffusion))
+		public SDXLUnet(int model_channels, int in_channels, int num_heads = 20, int context_dim = 2048, int adm_in_channels = 2816, float dropout = 0.0f, bool use_timestep = true) : base(nameof(SDUnet))
 		{
 			model = new Model(model_channels, in_channels, context_dim: context_dim, adm_in_channels: adm_in_channels, num_heads: num_heads, dropout: dropout, use_timestep: use_timestep);
 			RegisterComponents();

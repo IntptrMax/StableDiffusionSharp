@@ -7,12 +7,13 @@ namespace StableDiffusionDemo_Console
 		static void Main(string[] args)
 		{
 			string modelPath = @".\tPonynai3_v4.safetensors";
-			//modelPath = @"Chilloutmix.safetensors";
+			// modelPath = @"Chilloutmix.safetensors";
 			string esrganModelPath = @".\RealESRGAN_x4plus.pth";
 			string prompt = "High quality, best quality, realistic, beach, trees, sunset on sea.";
 			string nprompt = "2D, 3D, cartoon, painting, bad quality, worst quality.";
 			string i2iPrompt = "High quality, best quality, moon, grass, tree, boat.";
 			prompt = "cat with blue eyes";
+			nprompt = "";
 
 			SDDeviceType deviceType = SDDeviceType.CUDA;
 			SDScalarType scalarType = SDScalarType.Float16;

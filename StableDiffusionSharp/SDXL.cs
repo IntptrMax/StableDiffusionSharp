@@ -47,7 +47,7 @@ namespace StableDiffusionSharp
 		}
 
 		private readonly Clip.SDXLCliper cliper;
-		private readonly SDXLDiffusion diffusion;
+		private readonly SDXLUnet diffusion;
 		private readonly VAE.Decoder decoder;
 		private readonly VAE.Encoder encoder;
 		private Tokenizer tokenizer;
@@ -84,7 +84,7 @@ namespace StableDiffusionSharp
 			torchvision.io.DefaultImager = new torchvision.io.SkiaImager();
 			cliper = new Clip.SDXLCliper().to(float32).to(CPU);
 			cliper.eval();
-			diffusion = new SDXLDiffusion(model_channels, in_channels, num_head, context_dim, adm_in_channels, dropout).to(dtype).to(device);
+			diffusion = new SDXLUnet(model_channels, in_channels, num_head, context_dim, adm_in_channels, dropout).to(dtype).to(device);
 			diffusion.eval();
 			decoder = new VAE.Decoder(embed_dim: embed_dim, z_channels: z_channels).to(float32).to(CPU);
 			decoder.eval();
@@ -142,23 +142,27 @@ namespace StableDiffusionSharp
 		private (Tensor, Tensor) Clip(string prompt, string nprompt)
 		{
 			CheckModelLoaded();
-			if (tempPromptHash != (prompt + nprompt).GetHashCode())
+			if (tempPromptHash == (prompt + nprompt).GetHashCode())
 			{
-				Tensor uncond_tokens = tokenizer.Tokenize(nprompt);
-				(Tensor uncond_context, Tensor uncond_vector) = cliper.forward(uncond_tokens);
-
-				Tensor cond_tokens = tokenizer.Tokenize(prompt);
-				(Tensor cond_context, Tensor cond_vector) = cliper.forward(cond_tokens);
-
-				Tensor context = torch.cat([cond_context, uncond_context]);
-				this.tempPromptHash = (prompt + nprompt).GetHashCode();
-				this.tempTextContext = context;
-				this.tempVector = torch.cat([cond_vector, uncond_vector]);
-				return (context, tempVector);
+				return (this.tempTextContext, this.tempVector);
 			}
 			else
 			{
-				return (this.tempTextContext, this.tempVector);
+				using (torch.no_grad())
+				using (NewDisposeScope())
+				{
+					Tensor uncond_tokens = tokenizer.Tokenize(nprompt);
+					(Tensor uncond_context, Tensor uncond_vector) = cliper.forward(uncond_tokens);
+
+					Tensor cond_tokens = tokenizer.Tokenize(prompt);
+					(Tensor cond_context, Tensor cond_vector) = cliper.forward(cond_tokens);
+
+					Tensor context = torch.cat([cond_context, uncond_context]);
+					this.tempPromptHash = (prompt + nprompt).GetHashCode();
+					this.tempTextContext = context;
+					this.tempVector = torch.cat([cond_vector, uncond_vector]);
+					return (context.MoveToOuterDisposeScope(), tempVector.MoveToOuterDisposeScope());
+				}
 			}
 		}
 
@@ -176,37 +180,40 @@ namespace StableDiffusionSharp
 		{
 			CheckModelLoaded();
 
-			using (torch.no_grad())
+
+			if (steps < 1)
 			{
-				if (steps < 1)
-				{
-					throw new ArgumentException("steps must be greater than 0");
-				}
-				if (cfg < 0.1)
-				{
-					throw new ArgumentException("cfg must be greater than 0.1");
-				}
-				if (cfg < 0.5)
-				{
-					throw new ArgumentException("cfg is too small, it may cause the model to be unstable");
-				}
+				throw new ArgumentException("steps must be greater than 0");
+			}
+			if (cfg < 0.1)
+			{
+				throw new ArgumentException("cfg must be greater than 0.1");
+			}
+			if (cfg < 0.5)
+			{
+				throw new ArgumentException("cfg is too small, it may cause the model to be unstable");
+			}
 
-				seed = seed == 0 ? Random.Shared.NextInt64() : seed;
-				Generator generator = torch.manual_seed(seed);
-				torch.set_rng_state(generator.get_state());
+			seed = seed == 0 ? Random.Shared.NextInt64() : seed;
+			Generator generator = torch.manual_seed(seed);
+			torch.set_rng_state(generator.get_state());
 
-				width = (width / 64) * 8;  // must be multiples of 64
-				height = (height / 64) * 8; // must be multiples of 64
-				Console.WriteLine("Device:" + device);
-				Console.WriteLine("Type:" + dtype);
-				Console.WriteLine("CFG:" + cfg);
-				Console.WriteLine("Seed:" + seed);
-				Console.WriteLine("Width:" + width * 8);
-				Console.WriteLine("Height:" + height * 8);
+			width = (width / 64) * 8;  // must be multiples of 64
+			height = (height / 64) * 8; // must be multiples of 64
+			Console.WriteLine("Device:" + device);
+			Console.WriteLine("Type:" + dtype);
+			Console.WriteLine("CFG:" + cfg);
+			Console.WriteLine("Seed:" + seed);
+			Console.WriteLine("Width:" + width * 8);
+			Console.WriteLine("Height:" + height * 8);
 
-				Stopwatch sp = Stopwatch.StartNew();
-				Console.WriteLine("Clip is doing......");
-				(Tensor context, Tensor vector) = Clip(prompt, nprompt);
+			Stopwatch sp = Stopwatch.StartNew();
+			Console.WriteLine("Clip is doing......");
+
+			using (torch.no_grad())
+			using (NewDisposeScope())
+			{
+				(Tensor crossattn, Tensor vector) = Clip(prompt, nprompt);
 
 				Console.WriteLine("Getting latents......");
 				Tensor latents = torch.randn([1, 4, height, width]).to(dtype, device);
@@ -229,7 +236,7 @@ namespace StableDiffusionSharp
 					Tensor time_embedding = GetTimeEmbedding(timestep).to(dtype, device);
 					Tensor input_latents = sampler.ScaleModelInput(latents, i);
 					input_latents = input_latents.repeat(2, 1, 1, 1);
-					Tensor x_out = diffusion.forward(input_latents, context, time_embedding, vector);
+					Tensor x_out = diffusion.forward(input_latents, crossattn, time_embedding, vector);
 
 					Tensor[] ret = x_out.chunk(2);
 					Tensor output_cond = ret[0];
