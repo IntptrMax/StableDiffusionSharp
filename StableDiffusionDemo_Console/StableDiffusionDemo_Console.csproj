@@ -15,4 +15,10 @@
     <ProjectReference Include="..\StableDiffusionSharp\StableDiffusionSharp.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Reference Include="System.Management">
+      <HintPath>..\..\..\..\..\cache\nuget\system.management\9.0.3\lib\net8.0\System.Management.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
 </Project>

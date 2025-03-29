@@ -6,7 +6,7 @@ namespace StableDiffusionDemo_Console
 	{
 		static void Main(string[] args)
 		{
-			string modelPath = @".\juggernautXL.safetensors";
+			string modelPath = @".\tPonynai3V4.safetensors";
 			// modelPath = @"Chilloutmix.safetensors";
 			string esrganModelPath = @".\RealESRGAN_x4plus.pth";
 			string prompt = "High quality, best quality, realistic, beach, trees, sunset on sea.";
@@ -18,7 +18,7 @@ namespace StableDiffusionDemo_Console
 			SDDeviceType deviceType = SDDeviceType.CUDA;
 			SDScalarType scalarType = SDScalarType.Float16;
 			SDSamplerType samplerType = SDSamplerType.Euler;
-			int step = 20;
+			int step = 30;
 			float cfg = 7.0f;
 			long seed = 0;
 			long img2imgSubSeed = 0;
@@ -26,7 +26,6 @@ namespace StableDiffusionDemo_Console
 			int height = 512;
 			float strength = 0.75f;
 
-			// SDXL is not supported now.
 			SDXL sdxl = new SDXL(deviceType, scalarType);
 			sdxl.LoadModel(modelPath);
 			ImageMagick.MagickImage sdxlT2Image = sdxl.TextToImage(prompt, nprompt, width, height, step, seed, cfg, samplerType);

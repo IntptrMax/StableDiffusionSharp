@@ -379,5 +379,32 @@ namespace StableDiffusionSharp
 			}
 		}
 
+		private static long GetVideoCardMemory()
+		{
+			if (!torch.cuda.is_available())
+			{
+				return 0;
+			}
+			else
+			{
+				using (var factory = new SharpDX.DXGI.Factory1())
+				{
+					var adapter = factory.Adapters[0];
+					using (var adapter3 = adapter.QueryInterface<SharpDX.DXGI.Adapter3>())
+					{
+						if (adapter3 == null)
+						{
+							throw new ArgumentException($"Adapter {adapter.Description.Description} not support");
+						}
+						var memoryInfo = adapter3.QueryVideoMemoryInfo(0, SharpDX.DXGI.MemorySegmentGroup.Local);
+						long totalVRAM = adapter.Description.DedicatedVideoMemory;   
+						long usedVRAM = memoryInfo.CurrentUsage;                     
+						long freeVRAM = memoryInfo.Budget - usedVRAM;                 
+						return freeVRAM;
+					}
+				}
+			}
+		}
+
 	}
 }

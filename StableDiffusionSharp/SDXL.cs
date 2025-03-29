@@ -211,7 +211,6 @@ namespace StableDiffusionSharp
 			Console.WriteLine("Clip is doing......");
 
 			using (torch.no_grad())
-			using (NewDisposeScope())
 			{
 				(Tensor crossattn, Tensor vector) = Clip(prompt, nprompt);
 
