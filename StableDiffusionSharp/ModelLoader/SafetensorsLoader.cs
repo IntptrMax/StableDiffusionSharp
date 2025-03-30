@@ -1,9 +1,11 @@
 ﻿using Newtonsoft.Json.Linq;
 using System.Text;
+using static TorchSharp.torch;
+using TorchSharp;
 
 namespace StableDiffusionSharp.ModelLoader
 {
-	internal class SafetensorsLoader
+	internal static class SafetensorsLoader
 	{
 		private static List<TensorInfo> ReadTensorsInfoFromFile(string inputFileName)
 		{
@@ -106,7 +108,7 @@ namespace StableDiffusionSharp.ModelLoader
 			return ReadByteFromFile(inputFileName, bodyPosition, (long)offset, size);
 		}
 
-		internal static Dictionary<string, TorchSharp.torch.Tensor> Load(string fileName, string addString="")
+		internal static Dictionary<string, TorchSharp.torch.Tensor> Load(string fileName, string addString = "")
 		{
 			Dictionary<string, TorchSharp.torch.Tensor> tensors = new Dictionary<string, TorchSharp.torch.Tensor>();
 			List<TensorInfo> tensorInfos = ReadTensorsInfoFromFile(fileName);
@@ -117,6 +119,26 @@ namespace StableDiffusionSharp.ModelLoader
 				tensors.Add(addString + tensorInfo.Name, tensor);
 			}
 			return tensors;
+		}
+
+		internal static nn.Module LoadSafetensor(this torch.nn.Module module, string fileName)
+		{
+			using (torch.no_grad())
+			using (NewDisposeScope())
+			{
+				List<TensorInfo> tensorInfos = ReadTensorsInfoFromFile(fileName);
+				foreach (var mod in module.named_parameters())
+				{
+					ScalarType dtype = mod.parameter.dtype;
+					TensorInfo info = tensorInfos.First(a => a.Name == mod.name);
+					Tensor t = torch.zeros(mod.parameter.shape, info.Type);
+					t.bytes = ReadByteFromFile(info);
+					mod.parameter.copy_(t);
+					t.Dispose();
+					GC.Collect();
+				}
+				return module;
+			}
 		}
 
 	}

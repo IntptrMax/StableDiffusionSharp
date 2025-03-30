@@ -1,10 +1,11 @@
 ﻿using System.Collections.ObjectModel;
 using System.IO.Compression;
 using TorchSharp;
+using static TorchSharp.torch;
 
 namespace StableDiffusionSharp.ModelLoader
 {
-	internal class PickleLoader
+	internal static class PickleLoader
 	{
 		private static ZipArchive zip;
 		private static ReadOnlyCollection<ZipArchiveEntry> entries;
@@ -306,6 +307,21 @@ namespace StableDiffusionSharp.ModelLoader
 				tensors.Add(addString + tensorInfo.Name, tensor);
 			}
 			return tensors;
+		}
+
+		internal static nn.Module LoadPickle(this torch.nn.Module module, string fileName)
+		{
+			List<TensorInfo> tensorInfos = ReadTensorsInfoFromFile(fileName);
+			foreach (var mod in module.named_parameters())
+			{
+				ScalarType dtype = mod.parameter.dtype;
+				Device device = mod.parameter.device;
+				TensorInfo info = tensorInfos.Find(a => a.Name == mod.name)!;
+				mod.parameter.to(info.Type, CPU);
+				mod.parameter.bytes = ReadByteFromFile(info);
+				mod.parameter.to(dtype, device);
+			}
+			return module;
 		}
 
 	}

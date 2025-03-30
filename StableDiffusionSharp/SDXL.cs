@@ -1,4 +1,5 @@
-﻿using StableDiffusionSharp.Sampler;
+﻿using StableDiffusionSharp.ModelLoader;
+using StableDiffusionSharp.Sampler;
 using System.Diagnostics;
 using System.Text;
 using TorchSharp;
@@ -94,41 +95,48 @@ namespace StableDiffusionSharp
 
 		public void LoadModel(string modelPath, string vocabPath = @".\models\clip\vocab.json", string mergesPath = @".\models\clip\merges.txt")
 		{
-			Dictionary<string, Tensor> state_dict = Path.GetExtension(modelPath).ToLower() switch
-			{
-				".safetensors" => ModelLoader.SafetensorsLoader.Load(modelPath),
-				".pickle" => ModelLoader.PickleLoader.Load(modelPath),
-				_ => throw new ArgumentException("Unknown model file extension")
-			};
+			//Dictionary<string, Tensor> state_dict = Path.GetExtension(modelPath).ToLower() switch
+			//{
+			//	".safetensors" => ModelLoader.SafetensorsLoader.Load(modelPath),
+			//	".pickle" => ModelLoader.PickleLoader.Load(modelPath),
+			//	_ => throw new ArgumentException("Unknown model file extension")
+			//};
 
-			var (diffusion_missing, diffusion_error) = diffusion.load_state_dict(state_dict, strict: false);
-			var (cliper_missing, cliper_error) = cliper.load_state_dict(state_dict, strict: false);
-			var (decoder_missing, decoder_error) = decoder.load_state_dict(state_dict, strict: false);
-			var (encoder_missing, encoder_error) = encoder.load_state_dict(state_dict, strict: false);
+			//var (diffusion_missing, diffusion_error) = diffusion.load_state_dict(state_dict, strict: false);
+			//var (cliper_missing, cliper_error) = cliper.load_state_dict(state_dict, strict: false);
+			//var (decoder_missing, decoder_error) = decoder.load_state_dict(state_dict, strict: false);
+			//var (encoder_missing, encoder_error) = encoder.load_state_dict(state_dict, strict: false);
 
-			if (cliper_missing.Count + diffusion_missing.Count + decoder_missing.Count + encoder_missing.Count > 0)
-			{
-				Console.WriteLine("Missing keys in model loading:");
-				foreach (var key in cliper_missing)
-				{
-					Console.WriteLine(key);
-				}
-				foreach (var key in diffusion_missing)
-				{
-					Console.WriteLine(key);
-				}
-				foreach (var key in decoder_missing)
-				{
-					Console.WriteLine(key);
-				}
-				foreach (var key in encoder_missing)
-				{
-					Console.WriteLine(key);
-				}
-			}
-			state_dict.Clear();
+			//if (cliper_missing.Count + diffusion_missing.Count + decoder_missing.Count + encoder_missing.Count > 0)
+			//{
+			//	Console.WriteLine("Missing keys in model loading:");
+			//	foreach (var key in cliper_missing)
+			//	{
+			//		Console.WriteLine(key);
+			//	}
+			//	foreach (var key in diffusion_missing)
+			//	{
+			//		Console.WriteLine(key);
+			//	}
+			//	foreach (var key in decoder_missing)
+			//	{
+			//		Console.WriteLine(key);
+			//	}
+			//	foreach (var key in encoder_missing)
+			//	{
+			//		Console.WriteLine(key);
+			//	}
+			//}
+			//state_dict.Clear();
+
+			diffusion.LoadSafetensor(modelPath);
+			cliper.LoadSafetensor(modelPath);
+			decoder.LoadSafetensor(modelPath);
+			encoder.LoadSafetensor(modelPath);
+
 			tokenizer = new Tokenizer(vocabPath, mergesPath);
 			is_loaded = true;
+			GC.Collect();
 		}
 
 		private void CheckModelLoaded()
@@ -180,7 +188,6 @@ namespace StableDiffusionSharp
 		{
 			CheckModelLoaded();
 
-
 			if (steps < 1)
 			{
 				throw new ArgumentException("steps must be greater than 0");
@@ -213,6 +220,7 @@ namespace StableDiffusionSharp
 			using (torch.no_grad())
 			{
 				(Tensor crossattn, Tensor vector) = Clip(prompt, nprompt);
+				using var _ = NewDisposeScope(); 
 
 				Console.WriteLine("Getting latents......");
 				Tensor latents = torch.randn([1, 4, height, width]).to(dtype, device);
@@ -248,6 +256,7 @@ namespace StableDiffusionSharp
 				Console.WriteLine($"end sampling");
 				Console.WriteLine($"begin decoder");
 				latents = latents / scale_factor;
+
 				Tensor image = decoder.forward(latents);
 				Console.WriteLine($"end decoder");
 
@@ -330,7 +339,7 @@ namespace StableDiffusionSharp
 				}
 				Console.WriteLine($"end sampling");
 				Console.WriteLine($"begin decoder");
-				//latents = latents / scale_factor;
+				latents = latents / scale_factor;
 				Tensor image = decoder.forward(latents);
 				Console.WriteLine($"end decoder");
 
