@@ -12,6 +12,7 @@ namespace StableDiffusionSharp.Sampler
 
 		public override torch.Tensor Step(torch.Tensor model_output, int step_index, torch.Tensor sample, long seed = 0, float s_churn = 0, float s_tmin = 0, float s_tmax = float.PositiveInfinity, float s_noise = 1)
 		{
+			sample = sample.to(model_output.dtype, model_output.device);
 			Generator generator = torch.manual_seed(seed);
 			torch.set_rng_state(generator.get_state());
 			float sigma = base.Sigmas[step_index].ToSingle();

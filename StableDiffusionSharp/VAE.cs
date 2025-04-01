@@ -7,9 +7,9 @@ namespace StableDiffusionSharp
 {
 	internal class VAE
 	{
-		private static GroupNorm Normalize(int in_channels, int num_groups = 32)
+		private static GroupNorm Normalize(int in_channels, int num_groups = 32, float eps = 1e-6f, bool affine = true, Device? device = null, ScalarType? dtype = null)
 		{
-			return torch.nn.GroupNorm(num_groups: num_groups, num_channels: in_channels, eps: 1e-6, affine: true);
+			return torch.nn.GroupNorm(num_groups: num_groups, num_channels: in_channels, eps: eps, affine: affine, device: device, dtype: dtype);
 		}
 
 		private class ResnetBlock : Module<Tensor, Tensor>
@@ -23,18 +23,18 @@ namespace StableDiffusionSharp
 			private readonly Module<Tensor, Tensor> nin_shortcut;
 			private readonly SiLU swish;
 
-			public ResnetBlock(int in_channels, int out_channels) : base(nameof(AttnBlock))
+			public ResnetBlock(int in_channels, int out_channels, Device? device = null, ScalarType? dtype = null) : base(nameof(AttnBlock))
 			{
 				this.in_channels = in_channels;
 				this.out_channels = out_channels;
-				this.norm1 = Normalize(in_channels);
-				this.conv1 = torch.nn.Conv2d(in_channels, out_channels, kernel_size: 3, stride: 1, padding: 1);
-				this.norm2 = Normalize(out_channels);
-				this.conv2 = torch.nn.Conv2d(out_channels, out_channels, kernel_size: 3, stride: 1, padding: 1);
+				this.norm1 = Normalize(in_channels, device: device, dtype: dtype);
+				this.conv1 = torch.nn.Conv2d(in_channels, out_channels, kernel_size: 3, stride: 1, padding: 1, device: device, dtype: dtype);
+				this.norm2 = Normalize(out_channels, device: device, dtype: dtype);
+				this.conv2 = torch.nn.Conv2d(out_channels, out_channels, kernel_size: 3, stride: 1, padding: 1, device: device, dtype: dtype);
 
 				if (this.in_channels != this.out_channels)
 				{
-					this.nin_shortcut = torch.nn.Conv2d(in_channels: in_channels, out_channels: out_channels, kernel_size: 1);
+					this.nin_shortcut = torch.nn.Conv2d(in_channels: in_channels, out_channels: out_channels, kernel_size: 1, device: device, dtype: dtype);
 				}
 				else
 				{
@@ -70,13 +70,13 @@ namespace StableDiffusionSharp
 			private readonly Conv2d v;
 			private readonly Conv2d proj_out;
 
-			public AttnBlock(int in_channels) : base(nameof(AttnBlock))
+			public AttnBlock(int in_channels, Device? device = null, ScalarType? dtype = null) : base(nameof(AttnBlock))
 			{
-				this.norm = Normalize(in_channels);
-				this.q = Conv2d(in_channels, in_channels, kernel_size: 1);
-				this.k = Conv2d(in_channels, in_channels, kernel_size: 1);
-				this.v = Conv2d(in_channels, in_channels, kernel_size: 1);
-				this.proj_out = Conv2d(in_channels, in_channels, kernel_size: 1);
+				this.norm = Normalize(in_channels, device: device, dtype: dtype);
+				this.q = Conv2d(in_channels, in_channels, kernel_size: 1, device: device, dtype: dtype);
+				this.k = Conv2d(in_channels, in_channels, kernel_size: 1, device: device, dtype: dtype);
+				this.v = Conv2d(in_channels, in_channels, kernel_size: 1, device: device, dtype: dtype);
+				this.proj_out = Conv2d(in_channels, in_channels, kernel_size: 1, device: device, dtype: dtype);
 				RegisterComponents();
 			}
 
@@ -111,12 +111,12 @@ namespace StableDiffusionSharp
 			private readonly Conv2d? conv;
 			private readonly bool with_conv;
 
-			public Downsample(int in_channels, bool with_conv = true) : base(nameof(Downsample))
+			public Downsample(int in_channels, bool with_conv = true, Device? device = null, ScalarType? dtype = null) : base(nameof(Downsample))
 			{
 				this.with_conv = with_conv;
 				if (with_conv)
 				{
-					this.conv = Conv2d(in_channels, in_channels, kernel_size: 3, stride: 2);
+					this.conv = Conv2d(in_channels, in_channels, kernel_size: 3, stride: 2, device: device, dtype: dtype);
 
 				}
 				RegisterComponents();
@@ -142,12 +142,12 @@ namespace StableDiffusionSharp
 		{
 			private readonly Conv2d? conv;
 			private readonly bool with_conv;
-			public Upsample(int in_channels, bool with_conv = true) : base(nameof(Upsample))
+			public Upsample(int in_channels, bool with_conv = true, Device? device = null, ScalarType? dtype = null) : base(nameof(Upsample))
 			{
 				this.with_conv = with_conv;
 				if (with_conv)
 				{
-					this.conv = Conv2d(in_channels, in_channels, kernel_size: 3, padding: 1);
+					this.conv = Conv2d(in_channels, in_channels, kernel_size: 3, padding: 1, device: device, dtype: dtype);
 				}
 				RegisterComponents();
 			}
@@ -177,7 +177,7 @@ namespace StableDiffusionSharp
 			private readonly bool double_z;
 
 
-			public VAEEncoder(int ch = 128, int[]? ch_mult = null, int num_res_blocks = 2, int in_channels = 3, int z_channels = 16, bool double_z = true) : base(nameof(VAEEncoder))
+			public VAEEncoder(int ch = 128, int[]? ch_mult = null, int num_res_blocks = 2, int in_channels = 3, int z_channels = 16, bool double_z = true, Device? device = null, ScalarType? dtype = null) : base(nameof(VAEEncoder))
 			{
 				this.double_z = double_z;
 				ch_mult ??= [1, 2, 4, 4];
@@ -185,7 +185,7 @@ namespace StableDiffusionSharp
 				this.num_res_blocks = num_res_blocks;
 
 				// Input convolution
-				conv_in = Conv2d(in_channels, ch, kernel_size: 3, stride: 1, padding: 1);
+				conv_in = Conv2d(in_channels, ch, kernel_size: 3, stride: 1, padding: 1, device: device, dtype: dtype);
 
 				// Downsampling layers
 				in_ch_mult = [1, .. ch_mult];
@@ -201,7 +201,7 @@ namespace StableDiffusionSharp
 					block_in = ch * in_ch_mult[i_level];
 					for (int _ = 0; _ < num_res_blocks; _++)
 					{
-						block.append(new ResnetBlock(block_in, block_out));
+						block.append(new ResnetBlock(block_in, block_out, device: device, dtype: dtype));
 						block_in = block_out;
 					}
 
@@ -211,21 +211,21 @@ namespace StableDiffusionSharp
 
 					if (i_level != num_resolutions - 1)
 					{
-						d.append("downsample", new Downsample(block_in));
+						d.append("downsample", new Downsample(block_in, device: device, dtype: dtype));
 					}
 					this.down.append(d);
 				}
 
 				// Middle layers
 				this.mid = Sequential(
-					("block_1", new ResnetBlock(block_in, block_in)),
-					("attn_1", new AttnBlock(block_in)),
-					("block_2", new ResnetBlock(block_in, block_in)));
+					("block_1", new ResnetBlock(block_in, block_in, device: device, dtype: dtype)),
+					("attn_1", new AttnBlock(block_in, device: device, dtype: dtype)),
+					("block_2", new ResnetBlock(block_in, block_in, device: device, dtype: dtype)));
 
 
 				// Output layers
-				norm_out = Normalize(block_in);
-				conv_out = Conv2d(block_in, (double_z ? 2 : 1) * z_channels, kernel_size: 3, stride: 1, padding: 1);
+				norm_out = Normalize(block_in, device: device, dtype: dtype);
+				conv_out = Conv2d(block_in, (double_z ? 2 : 1) * z_channels, kernel_size: 3, stride: 1, padding: 1, device: device, dtype: dtype);
 				swish = SiLU(inplace: true);
 
 				RegisterComponents();
@@ -265,7 +265,7 @@ namespace StableDiffusionSharp
 			private readonly Conv2d conv_out;
 			private readonly GELU swish;
 
-			public VAEDecoder(int ch = 128, int out_ch = 3, int[]? ch_mult = null, int num_res_blocks = 2, int resolution = 256, int z_channels = 16) : base(nameof(VAEDecoder))
+			public VAEDecoder(int ch = 128, int out_ch = 3, int[]? ch_mult = null, int num_res_blocks = 2, int resolution = 256, int z_channels = 16, Device? device = null, ScalarType? dtype = null) : base(nameof(VAEDecoder))
 			{
 				ch_mult ??= [1, 2, 4, 4];
 				this.num_resolutions = ch_mult.Length;
@@ -274,13 +274,13 @@ namespace StableDiffusionSharp
 
 				int curr_res = resolution / (int)Math.Pow(2, num_resolutions - 1);
 				// z to block_in
-				this.conv_in = Conv2d(z_channels, block_in, kernel_size: 3, padding: 1);
+				this.conv_in = Conv2d(z_channels, block_in, kernel_size: 3, padding: 1, device: device, dtype: dtype);
 
 				// middle
 				this.mid = Sequential(
-					("block_1", new ResnetBlock(block_in, block_in)),
-					("attn_1", new AttnBlock(block_in)),
-					("block_2", new ResnetBlock(block_in, block_in))
+					("block_1", new ResnetBlock(block_in, block_in, device: device, dtype: dtype)),
+					("attn_1", new AttnBlock(block_in, device: device, dtype: dtype)),
+					("block_2", new ResnetBlock(block_in, block_in, device: device, dtype: dtype))
 					);
 
 				// upsampling
@@ -295,7 +295,7 @@ namespace StableDiffusionSharp
 
 					for (int i_block = 0; i_block < num_res_blocks + 1; i_block++)
 					{
-						block.append(new ResnetBlock(block_in, block_out));
+						block.append(new ResnetBlock(block_in, block_out, device: device, dtype: dtype));
 						block_in = block_out;
 					}
 
@@ -303,7 +303,7 @@ namespace StableDiffusionSharp
 
 					if (i_level != 0)
 					{
-						u.append("upsample", new Upsample(block_in));
+						u.append("upsample", new Upsample(block_in, device: device, dtype: dtype));
 						curr_res *= 2;
 					}
 					//this.up.append(u);
@@ -313,8 +313,8 @@ namespace StableDiffusionSharp
 				this.up = Sequential(list);
 
 				// end
-				this.norm_out = Normalize(block_in);
-				this.conv_out = torch.nn.Conv2d(block_in, out_ch, kernel_size: 3, stride: 1, padding: 1);
+				this.norm_out = Normalize(block_in, device: device, dtype: dtype);
+				this.conv_out = torch.nn.Conv2d(block_in, out_ch, kernel_size: 3, stride: 1, padding: 1, device: device, dtype: dtype);
 				this.swish = GELU(inplace: true);
 				RegisterComponents();
 			}
@@ -345,9 +345,9 @@ namespace StableDiffusionSharp
 		{
 			private Sequential first_stage_model;
 
-			public Decoder(int embed_dim = 4, int z_channels = 4) : base(nameof(Decoder))
+			public Decoder(int embed_dim = 4, int z_channels = 4, Device? device = null, ScalarType? dtype = null) : base(nameof(Decoder))
 			{
-				first_stage_model = Sequential(("post_quant_conv", Conv2d(embed_dim, z_channels, 1)), ("decoder", new VAEDecoder(z_channels: z_channels)));
+				first_stage_model = Sequential(("post_quant_conv", Conv2d(embed_dim, z_channels, 1, device: device, dtype: dtype)), ("decoder", new VAEDecoder(z_channels: z_channels, device: device, dtype: dtype)));
 				RegisterComponents();
 			}
 
@@ -363,10 +363,10 @@ namespace StableDiffusionSharp
 		internal class Encoder : Module<Tensor, Tensor>
 		{
 			private Sequential first_stage_model;
-			public Encoder(int embed_dim = 4, int z_channels = 4, bool double_z = true) : base(nameof(Encoder))
+			public Encoder(int embed_dim = 4, int z_channels = 4, bool double_z = true, Device? device = null, ScalarType? dtype = null) : base(nameof(Encoder))
 			{
 				int factor = double_z ? 2 : 1;
-				first_stage_model = Sequential(("encoder", new VAEEncoder(z_channels: z_channels)), ("quant_conv", Conv2d(factor * embed_dim, factor * z_channels, 1)));
+				first_stage_model = Sequential(("encoder", new VAEEncoder(z_channels: z_channels, device: device, dtype: dtype)), ("quant_conv", Conv2d(factor * embed_dim, factor * z_channels, 1, device: device, dtype: dtype)));
 				RegisterComponents();
 			}
 
@@ -397,9 +397,9 @@ namespace StableDiffusionSharp
 							throw new ArgumentException($"Adapter {adapter.Description.Description} not support");
 						}
 						var memoryInfo = adapter3.QueryVideoMemoryInfo(0, SharpDX.DXGI.MemorySegmentGroup.Local);
-						long totalVRAM = adapter.Description.DedicatedVideoMemory;   
-						long usedVRAM = memoryInfo.CurrentUsage;                     
-						long freeVRAM = memoryInfo.Budget - usedVRAM;                 
+						long totalVRAM = adapter.Description.DedicatedVideoMemory;
+						long usedVRAM = memoryInfo.CurrentUsage;
+						long freeVRAM = memoryInfo.Budget - usedVRAM;
 						return freeVRAM;
 					}
 				}

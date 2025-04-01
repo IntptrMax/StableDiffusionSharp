@@ -6,20 +6,20 @@ namespace StableDiffusionDemo_Console
 	{
 		static void Main(string[] args)
 		{
-			string modelPath = @".\chilloutmix.safetensors";
-			string vaeModelPath = @".\vae-ft-mse-840000-ema-pruned.safetensors";
-			/// modelPath = @"Chilloutmix.safetensors";
+			string sdxlModelPath = @".\realDream_sdxlPony15.safetensors";
+			string sdxlVaePath = @".\sdxl.vae.safetensors";
+			string modelPath = @".\Chilloutmix.safetensors";
+			string vaeModelPath = @".\vae.safetensors";
+
 			string esrganModelPath = @".\RealESRGAN_x4plus.pth";
-			string prompt = "High quality, best quality, realistic, beach, trees, sunset on sea.";
-			string nprompt = "2D, 3D, cartoon, painting, bad quality, worst quality.";
 			string i2iPrompt = "High quality, best quality, moon, grass, tree, boat.";
-			prompt = "cat with blue eyes";
-			nprompt = "";
+			string prompt = "cat with blue eyes";
+			string nprompt = "";
 
 			SDDeviceType deviceType = SDDeviceType.CUDA;
 			SDScalarType scalarType = SDScalarType.Float16;
-			SDSamplerType samplerType = SDSamplerType.Euler;
-			int step = 20;
+			SDSamplerType samplerType = SDSamplerType.EulerAncestral;
+			int step = 30;
 			float cfg = 7.0f;
 			long seed = 0;
 			long img2imgSubSeed = 0;
@@ -27,14 +27,19 @@ namespace StableDiffusionDemo_Console
 			int height = 512;
 			float strength = 0.75f;
 
-			//SDXL sdxl = new SDXL(deviceType, scalarType);
-			//sdxl.LoadModel(modelPath);
-			//ImageMagick.MagickImage sdxlT2Image = sdxl.TextToImage(prompt, nprompt, width, height, step, seed, cfg, samplerType);
-			//sdxlT2Image.Write("output_sdxl_t2i.png");
+			SDXL sdxl = new SDXL(deviceType, scalarType);
+			Console.WriteLine("Loading model......");
+			sdxl.LoadModel(sdxlModelPath, sdxlVaePath);
+			Console.WriteLine("Model loaded.");
+
+			ImageMagick.MagickImage sdxlT2Image = sdxl.TextToImage(prompt, nprompt, width, height, step, seed, cfg, samplerType);
+			sdxlT2Image.Write("output_sdxl_t2i.png");
+			ImageMagick.MagickImage sdxlI2Image = sdxl.ImageToImage(sdxlT2Image, i2iPrompt, nprompt, step, strength, seed, img2imgSubSeed, cfg, samplerType);
+			sdxlI2Image.Write("output_sdxl_i2i.png");
 
 			StableDiffusion sd = new StableDiffusion(deviceType, scalarType);
 			Console.WriteLine("Loading model......");
-			sd.LoadModel(modelPath);
+			sd.LoadModel(modelPath, vaeModelPath);
 			Console.WriteLine("Model loaded.");
 
 			ImageMagick.MagickImage t2iImage = sd.TextToImage(prompt, nprompt, width, height, step, seed, cfg, samplerType);

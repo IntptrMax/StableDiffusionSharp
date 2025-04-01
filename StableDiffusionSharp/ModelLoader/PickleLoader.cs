@@ -5,12 +5,12 @@ using static TorchSharp.torch;
 
 namespace StableDiffusionSharp.ModelLoader
 {
-	internal static class PickleLoader
+	internal class PickleLoader
 	{
-		private static ZipArchive zip;
-		private static ReadOnlyCollection<ZipArchiveEntry> entries;
+		private ZipArchive zip;
+		private ReadOnlyCollection<ZipArchiveEntry> entries;
 
-		private static List<TensorInfo> ReadTensorsInfoFromFile(string fileName)
+		private List<TensorInfo> ReadTensorsInfoFromFile(string fileName)
 		{
 			List<TensorInfo> tensors = new List<TensorInfo>();
 
@@ -265,7 +265,7 @@ namespace StableDiffusionSharp.ModelLoader
 			return tensors;
 		}
 
-		private static byte[] ReadByteFromFile(TensorInfo tensor)
+		private byte[] ReadByteFromFile(TensorInfo tensor)
 		{
 			if (entries is null)
 			{
@@ -296,7 +296,7 @@ namespace StableDiffusionSharp.ModelLoader
 			//return data;
 		}
 
-		internal static Dictionary<string, TorchSharp.torch.Tensor> Load(string fileName, string addString = "")
+		internal Dictionary<string, TorchSharp.torch.Tensor> Load(string fileName, string addString = "")
 		{
 			Dictionary<string, TorchSharp.torch.Tensor> tensors = new Dictionary<string, TorchSharp.torch.Tensor>();
 			List<TensorInfo> tensorInfos = ReadTensorsInfoFromFile(fileName);
@@ -309,19 +309,24 @@ namespace StableDiffusionSharp.ModelLoader
 			return tensors;
 		}
 
-		internal static nn.Module LoadPickle(this torch.nn.Module module, string fileName)
+		internal nn.Module LoadPickle(torch.nn.Module module, string fileName, string maybeAddHeaderInBlock = "")
 		{
-			List<TensorInfo> tensorInfos = ReadTensorsInfoFromFile(fileName);
-			foreach (var mod in module.named_parameters())
+			using (torch.no_grad())
+			using (NewDisposeScope())
 			{
-				ScalarType dtype = mod.parameter.dtype;
-				Device device = mod.parameter.device;
-				TensorInfo info = tensorInfos.Find(a => a.Name == mod.name)!;
-				mod.parameter.to(info.Type, CPU);
-				mod.parameter.bytes = ReadByteFromFile(info);
-				mod.parameter.to(dtype, device);
+				List<TensorInfo> tensorInfos = ReadTensorsInfoFromFile(fileName);
+				foreach (var mod in module.named_parameters())
+				{
+					ScalarType dtype = mod.parameter.dtype;
+					TensorInfo info = tensorInfos.First(a => ((a.Name == mod.name) || (maybeAddHeaderInBlock + a.Name == mod.name)));
+					Tensor t = torch.zeros(mod.parameter.shape, info.Type);
+					t.bytes = ReadByteFromFile(info);
+					mod.parameter.copy_(t);
+					t.Dispose();
+					GC.Collect();
+				}
+				return module;
 			}
-			return module;
 		}
 
 	}

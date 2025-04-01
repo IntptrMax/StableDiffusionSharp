@@ -40,7 +40,6 @@ Requires reference to one of libtorch-cpu, libtorch-cuda-12.1, libtorch-cuda-12.
     <PackageReference Include="SharpDX" Version="4.2.0" />
     <PackageReference Include="SharpDX.DXGI" Version="4.2.0" />
     <PackageReference Include="TorchSharp" Version="0.105.0" />
-    <PackageReference Include="TorchSharp.PyBridge" Version="1.4.3" />
     <PackageReference Include="TorchVision" Version="0.105.0" />
   </ItemGroup>
 

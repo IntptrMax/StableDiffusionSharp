@@ -83,63 +83,24 @@ namespace StableDiffusionSharp
 			this.device = new Device((DeviceType)deviceType);
 			this.dtype = (ScalarType)scalarType;
 			torchvision.io.DefaultImager = new torchvision.io.SkiaImager();
-			cliper = new Clip.SDCliper().to(dtype).to(device);
+			cliper = new Clip.SDCliper(device: device, dtype: dtype);
 			cliper.eval();
-			diffusion = new SDUnet(model_channels, in_channels, num_head, context_dim, dropout).to(dtype).to(device);
+			diffusion = new SDUnet(model_channels, in_channels, num_head, context_dim, dropout, device: device, dtype: dtype);
 			diffusion.eval();
-			decoder = new VAE.Decoder(embed_dim: embed_dim, z_channels: z_channels).to(dtype).to(device);
+			decoder = new VAE.Decoder(embed_dim: embed_dim, z_channels: z_channels, device: device, dtype: dtype);
 			decoder.eval();
-			encoder = new VAE.Encoder(embed_dim: embed_dim, z_channels: z_channels, double_z: double_z).to(dtype).to(device);
+			encoder = new VAE.Encoder(embed_dim: embed_dim, z_channels: z_channels, double_z: double_z, device: device, dtype: dtype);
 			encoder.eval();
 		}
 
 		public void LoadModel(string modelPath, string vaeModelPath = "", string vocabPath = @".\models\clip\vocab.json", string mergesPath = @".\models\clip\merges.txt")
 		{
-			//Dictionary<string, Tensor> state_dict = Path.GetExtension(modelPath).ToLower() switch
-			//{
-			//	".safetensors" => ModelLoader.SafetensorsLoader.Load(modelPath),
-			//	".pickle" => ModelLoader.PickleLoader.Load(modelPath),
-			//	_ => throw new ArgumentException("Unknown model file extension")
-			//};
-
-			//var (cliper_missing, cliper_error) = cliper.load_state_dict(state_dict, strict: false);
-			//var (diffusion_missing, diffusion_error) = diffusion.load_state_dict(state_dict, strict: false);
-			//var (decoder_missing, decoder_error) = decoder.load_state_dict(state_dict, strict: false);
-			//var (encoder_missing, encoder_error) = encoder.load_state_dict(state_dict, strict: false);
-
-			//if (cliper_missing.Count + diffusion_missing.Count + decoder_missing.Count/* + encoder_missing.Count*/ > 0)
-			//{
-			//	Console.WriteLine("Missing keys in model loading:");
-			//	foreach (var key in cliper_missing)
-			//	{
-			//		Console.WriteLine(key);
-			//	}
-			//	foreach (var key in diffusion_missing)
-			//	{
-			//		Console.WriteLine(key);
-			//	}
-			//	foreach (var key in decoder_missing)
-			//	{
-			//		Console.WriteLine(key);
-			//	}
-			//	foreach (var key in encoder_missing)
-			//	{
-			//		Console.WriteLine(key);
-			//	}
-			//}
-
-			//state_dict.Clear();
-			if (string.IsNullOrEmpty(vaeModelPath))
-			{
-				vaeModelPath = modelPath;
-			}
-
 			vaeModelPath = string.IsNullOrEmpty(vaeModelPath) ? modelPath : vaeModelPath;
 
-			diffusion.LoadSafetensor(modelPath);
-			cliper.LoadSafetensor(modelPath);
-			decoder.LoadSafetensor(vaeModelPath);
-			encoder.LoadSafetensor(vaeModelPath);
+			cliper.LoadModel(modelPath);
+			diffusion.LoadModel(modelPath);
+			decoder.LoadModel(vaeModelPath, "first_stage_model.");
+			encoder.LoadModel(vaeModelPath, "first_stage_model.");
 
 			tokenizer = new Tokenizer(vocabPath, mergesPath);
 			is_loaded = true;
@@ -195,10 +156,6 @@ namespace StableDiffusionSharp
 				{
 					throw new ArgumentException("steps must be greater than 0");
 				}
-				if (cfg < 0.1)
-				{
-					throw new ArgumentException("cfg must be greater than 0.1");
-				}
 				if (cfg < 0.5)
 				{
 					throw new ArgumentException("cfg is too small, it may cause the image to be too noisy");
@@ -220,6 +177,7 @@ namespace StableDiffusionSharp
 				Stopwatch sp = Stopwatch.StartNew();
 				Console.WriteLine("Clip is doing......");
 				Tensor context = Clip(prompt, nprompt);
+				using var _ = NewDisposeScope();
 				Console.WriteLine("Getting latents......");
 				Tensor latents = torch.randn([1, 4, height, width]).to(dtype, device);
 
@@ -255,8 +213,7 @@ namespace StableDiffusionSharp
 				Tensor image = decoder.forward(latents);
 				Console.WriteLine($"end decoder");
 
-				sp.Stop();
-				Console.WriteLine($"Total time is: {sp.ElapsedMilliseconds} ms.");
+
 				image = ((image + 0.5) * 255.0f).clamp(0, 255).@byte().cpu();
 
 				ImageMagick.MagickImage img = Tools.GetImageFromTensor(image);
@@ -269,6 +226,8 @@ namespace StableDiffusionSharp
 				}
 				stringBuilder.AppendLine($"Steps: {steps}, CFG scale_factor: {cfg}, Seed: {seed}, Size: {width}x{height}, Version: StableDiffusionSharp");
 				img.SetAttribute("parameters", stringBuilder.ToString());
+				sp.Stop();
+				Console.WriteLine($"Total time is: {sp.ElapsedMilliseconds} ms.");
 				return img;
 			}
 		}

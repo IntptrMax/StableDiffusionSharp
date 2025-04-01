@@ -9,15 +9,15 @@ namespace StableDiffusionSharp
 	public class Esrgan : IDisposable
 	{
 		private readonly RRDBNet rrdbnet;
-		private readonly Device device;
-		private readonly ScalarType dtype;
+		Device device;
+		ScalarType dtype;
+
 		public Esrgan(int num_block = 23, SDDeviceType deviceType = SDDeviceType.CUDA, SDScalarType scalarType = SDScalarType.Float16)
 		{
 			torchvision.io.DefaultImager = new torchvision.io.SkiaImager();
 			device = new Device((DeviceType)deviceType);
 			dtype = (ScalarType)scalarType;
-			rrdbnet = new RRDBNet(num_in_ch: 3, num_out_ch: 3, num_feat: 64, num_block: num_block, num_grow_ch: 32, scale: 4);
-			rrdbnet.to(device, dtype);
+			rrdbnet = new RRDBNet(num_in_ch: 3, num_out_ch: 3, num_feat: 64, num_block: num_block, num_grow_ch: 32, scale: 4, device: device, dtype: dtype);
 		}
 
 		/// <summary>
@@ -37,13 +37,13 @@ namespace StableDiffusionSharp
 			/// </summary>
 			/// <param name="num_feat">Channel number of intermediate features.</param>
 			/// <param name="num_grow_ch">Channels for each growth.</param>
-			public ResidualDenseBlock(int num_feat = 64, int num_grow_ch = 32) : base(nameof(ResidualDenseBlock))
+			public ResidualDenseBlock(int num_feat = 64, int num_grow_ch = 32, Device? device = null, ScalarType? dtype = null) : base(nameof(ResidualDenseBlock))
 			{
-				this.conv1 = nn.Conv2d(num_feat, num_grow_ch, 3, 1, 1);
-				this.conv2 = nn.Conv2d(num_feat + num_grow_ch, num_grow_ch, 3, 1, 1);
-				this.conv3 = nn.Conv2d(num_feat + 2 * num_grow_ch, num_grow_ch, 3, 1, 1);
-				this.conv4 = nn.Conv2d(num_feat + 3 * num_grow_ch, num_grow_ch, 3, 1, 1);
-				this.conv5 = nn.Conv2d(num_feat + 4 * num_grow_ch, num_feat, 3, 1, 1);
+				this.conv1 = nn.Conv2d(num_feat, num_grow_ch, 3, 1, 1, device: device, dtype: dtype);
+				this.conv2 = nn.Conv2d(num_feat + num_grow_ch, num_grow_ch, 3, 1, 1, device: device, dtype: dtype);
+				this.conv3 = nn.Conv2d(num_feat + 2 * num_grow_ch, num_grow_ch, 3, 1, 1, device: device, dtype: dtype);
+				this.conv4 = nn.Conv2d(num_feat + 3 * num_grow_ch, num_grow_ch, 3, 1, 1, device: device, dtype: dtype);
+				this.conv5 = nn.Conv2d(num_feat + 4 * num_grow_ch, num_feat, 3, 1, 1, device: device, dtype: dtype);
 				this.lrelu = nn.LeakyReLU(negative_slope: 0.2f, inplace: true);
 				RegisterComponents();
 			}
@@ -77,11 +77,11 @@ namespace StableDiffusionSharp
 			/// </summary>
 			/// <param name="num_feat">Channel number of intermediate features.</param>
 			/// <param name="num_grow_ch">Channels for each growth.</param>
-			public RRDB(int num_feat, int num_grow_ch = 32) : base(nameof(RRDB))
+			public RRDB(int num_feat, int num_grow_ch = 32, Device? device = null, ScalarType? dtype = null) : base(nameof(RRDB))
 			{
-				this.rdb1 = new ResidualDenseBlock(num_feat, num_grow_ch);
-				this.rdb2 = new ResidualDenseBlock(num_feat, num_grow_ch);
-				this.rdb3 = new ResidualDenseBlock(num_feat, num_grow_ch);
+				this.rdb1 = new ResidualDenseBlock(num_feat, num_grow_ch, device: device, dtype: dtype);
+				this.rdb2 = new ResidualDenseBlock(num_feat, num_grow_ch, device: device, dtype: dtype);
+				this.rdb3 = new ResidualDenseBlock(num_feat, num_grow_ch, device: device, dtype: dtype);
 				RegisterComponents();
 			}
 			public override Tensor forward(Tensor x)
@@ -109,7 +109,7 @@ namespace StableDiffusionSharp
 			private readonly Conv2d conv_last;
 			private readonly LeakyReLU lrelu;
 
-			public RRDBNet(int num_in_ch, int num_out_ch, int scale = 4, int num_feat = 64, int num_block = 23, int num_grow_ch = 32) : base(nameof(RRDBNet))
+			public RRDBNet(int num_in_ch, int num_out_ch, int scale = 4, int num_feat = 64, int num_block = 23, int num_grow_ch = 32, Device? device = null, ScalarType? dtype = null) : base(nameof(RRDBNet))
 			{
 				this.scale = scale;
 				if (scale == 2)
@@ -120,18 +120,18 @@ namespace StableDiffusionSharp
 				{
 					num_in_ch = num_in_ch * 16;
 				}
-				this.conv_first = Conv2d(num_in_ch, num_feat, 3, 1, 1);
+				this.conv_first = Conv2d(num_in_ch, num_feat, 3, 1, 1, device: device, dtype: dtype);
 				this.body = Sequential();
 				for (int i = 0; i < num_block; i++)
 				{
-					body.append(new RRDB(num_feat: num_feat, num_grow_ch: num_grow_ch));
+					body.append(new RRDB(num_feat: num_feat, num_grow_ch: num_grow_ch, device: device, dtype: dtype));
 				}
-				this.conv_body = Conv2d(num_feat, num_feat, 3, 1, 1);
+				this.conv_body = Conv2d(num_feat, num_feat, 3, 1, 1, device: device, dtype: dtype);
 				// upsample
-				this.conv_up1 = Conv2d(num_feat, num_feat, 3, 1, 1);
-				this.conv_up2 = Conv2d(num_feat, num_feat, 3, 1, 1);
-				this.conv_hr = Conv2d(num_feat, num_feat, 3, 1, 1);
-				this.conv_last = Conv2d(num_feat, num_out_ch, 3, 1, 1);
+				this.conv_up1 = Conv2d(num_feat, num_feat, 3, 1, 1, device: device, dtype: dtype);
+				this.conv_up2 = Conv2d(num_feat, num_feat, 3, 1, 1, device: device, dtype: dtype);
+				this.conv_hr = Conv2d(num_feat, num_feat, 3, 1, 1, device: device, dtype: dtype);
+				this.conv_last = Conv2d(num_feat, num_out_ch, 3, 1, 1, device: device, dtype: dtype);
 				this.lrelu = LeakyReLU(negative_slope: 0.2f, inplace: true);
 				RegisterComponents();
 			}
@@ -190,8 +190,7 @@ namespace StableDiffusionSharp
 
 		public void LoadModel(string path)
 		{
-			Dictionary<string, Tensor> state_dict = PickleLoader.Load(path);
-			var (miss, unexp) = rrdbnet.load_state_dict(state_dict);
+			rrdbnet.LoadModel(path);
 			rrdbnet.eval();
 		}
 
