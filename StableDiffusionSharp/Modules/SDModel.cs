@@ -34,18 +34,20 @@ namespace StableDiffusionSharp.Modules
 		{
 			public int CurrentStep { get; }
 			public int TotalSteps { get; }
+			public ImageMagick.MagickImage VAEApproxImg { get; }
 
-			public StepEventArgs(int currentStep, int totalSteps)
+			public StepEventArgs(int currentStep, int totalSteps, ImageMagick.MagickImage vAEApproxImg)
 			{
 				CurrentStep = currentStep;
 				TotalSteps = totalSteps;
+				VAEApproxImg = vAEApproxImg;
 			}
 		}
 
 		public event EventHandler<StepEventArgs> StepProgress;
-		protected virtual void OnStepProgress(int currentStep, int totalSteps)
+		protected void OnStepProgress(int currentStep, int totalSteps, ImageMagick.MagickImage vaeApproxImg)
 		{
-			StepProgress?.Invoke(this, new StepEventArgs(currentStep, totalSteps));
+			StepProgress?.Invoke(this, new StepEventArgs(currentStep, totalSteps, vaeApproxImg));
 		}
 
 		internal Module<Tensor, long, (Tensor, Tensor)> cliper;
@@ -53,6 +55,7 @@ namespace StableDiffusionSharp.Modules
 		private VAE.Decoder decoder;
 		private VAE.Encoder encoder;
 		private Tokenizer tokenizer;
+		private VAEApprox vaeApprox;
 
 		internal Device device;
 		internal ScalarType dtype;
@@ -70,7 +73,7 @@ namespace StableDiffusionSharp.Modules
 			this.dtype = dtype ?? torch.float32;
 		}
 
-		public void LoadModel(string modelPath, string vaeModelPath, string vocabPath = @".\models\clip\vocab.json", string mergesPath = @".\models\clip\merges.txt")
+		public virtual void LoadModel(string modelPath, string vaeModelPath, string vocabPath = @".\models\clip\vocab.json", string mergesPath = @".\models\clip\merges.txt")
 		{
 			ModelType modelType = ModelLoader.ModelLoader.GetModelType(modelPath);
 
@@ -95,12 +98,24 @@ namespace StableDiffusionSharp.Modules
 			encoder = new VAE.Encoder(embed_dim: embed_dim, z_channels: z_channels, double_z: double_z, device: device, dtype: dtype);
 			encoder.eval();
 
+			vaeApprox = new VAEApprox(4, device, dtype);
+			vaeApprox.eval();
+
 			vaeModelPath = string.IsNullOrEmpty(vaeModelPath) ? modelPath : vaeModelPath;
 
 			cliper.LoadModel(modelPath);
 			diffusion.LoadModel(modelPath);
 			decoder.LoadModel(vaeModelPath, "first_stage_model.");
 			encoder.LoadModel(vaeModelPath, "first_stage_model.");
+
+			string vaeApproxPath = modelType switch
+			{
+				ModelType.SD1 => @".\Models\VAEApprox\vaeapp_sd15.pth",
+				ModelType.SDXL => @".\Models\VAEApprox\xlvaeapp.pth",
+				_ => throw new ArgumentException("Invalid model type")
+			};
+
+			vaeApprox.LoadModel(vaeApproxPath);
 
 			tokenizer = new Tokenizer(vocabPath, mergesPath);
 			is_loaded = true;
@@ -165,7 +180,7 @@ namespace StableDiffusionSharp.Modules
 		/// <param name="steps">Step to generate image</param>
 		/// <param name="seed">Random seed for generating image, it will get random when the value is 0</param>
 		/// <param name="cfg">Classifier Free Guidance</param>
-		public ImageMagick.MagickImage TextToImage(string prompt, string nprompt = "", long clip_skip = 0, int width = 512, int height = 512, int steps = 20, long seed = 0, float cfg = 7.0f, SDSamplerType samplerType = SDSamplerType.Euler)
+		public virtual ImageMagick.MagickImage TextToImage(string prompt, string nprompt = "", long clip_skip = 0, int width = 512, int height = 512, int steps = 20, long seed = 0, float cfg = 7.0f, SDSamplerType samplerType = SDSamplerType.Euler)
 		{
 			CheckModelLoaded();
 
@@ -213,7 +228,11 @@ namespace StableDiffusionSharp.Modules
 				Console.WriteLine($"begin sampling");
 				for (int i = 0; i < steps; i++)
 				{
-					Console.WriteLine($"steps:" + (i + 1));
+					Tensor approxTensor = vaeApprox.forward(latents);
+					approxTensor = approxTensor * 127.5 + 127.5;
+					approxTensor = approxTensor.clamp(0, 255).@byte().cpu();
+					ImageMagick.MagickImage approxImg = Tools.GetImageFromTensor(approxTensor);
+					OnStepProgress(i + 1, steps, approxImg);
 					Tensor timestep = sampler.Timesteps[i];
 					Tensor time_embedding = GetTimeEmbedding(timestep).to(dtype, device);
 					Tensor input_latents = sampler.ScaleModelInput(latents, i);
@@ -224,7 +243,6 @@ namespace StableDiffusionSharp.Modules
 					Tensor output_uncond = ret[1];
 					output = cfg * (output_cond - output_uncond) + output_uncond;
 					latents = sampler.Step(output, i, latents, seed);
-					//OnStepProgress(i + 1, steps);
 				}
 				Console.WriteLine($"end sampling");
 				Console.WriteLine($"begin decoder");
@@ -252,7 +270,7 @@ namespace StableDiffusionSharp.Modules
 		}
 
 
-		public ImageMagick.MagickImage ImageToImage(ImageMagick.MagickImage orgImage, string prompt, string nprompt = "", long clip_skip = 0, int steps = 20, float strength = 0.75f, long seed = 0, long subSeed = 0, float cfg = 7.0f, SDSamplerType samplerType = SDSamplerType.Euler)
+		public virtual ImageMagick.MagickImage ImageToImage(ImageMagick.MagickImage orgImage, string prompt, string nprompt = "", long clip_skip = 0, int steps = 20, float strength = 0.75f, long seed = 0, long subSeed = 0, float cfg = 7.0f, SDSamplerType samplerType = SDSamplerType.Euler)
 		{
 			CheckModelLoaded();
 
@@ -296,8 +314,13 @@ namespace StableDiffusionSharp.Modules
 				Console.WriteLine($"begin sampling");
 				for (int i = 0; i < sigma_sched.NumberOfElements - 1; i++)
 				{
+					Tensor approxTensor = vaeApprox.forward(latents);
+					approxTensor = approxTensor * 127.5 + 127.5;
+					approxTensor = approxTensor.clamp(0, 255).@byte().cpu();
+					ImageMagick.MagickImage approxImg = Tools.GetImageFromTensor(approxTensor);
+					OnStepProgress(i + 1, steps, approxImg);
+
 					int index = steps - t_enc + i - 1;
-					Console.WriteLine($"steps:" + (i + 1));
 					Tensor timestep = sampler.Timesteps[index];
 					Tensor time_embedding = GetTimeEmbedding(timestep);
 					Tensor input_latents = sampler.ScaleModelInput(latents, index);
@@ -308,7 +331,6 @@ namespace StableDiffusionSharp.Modules
 					Tensor output_uncond = ret[1];
 					Tensor noisePred = cfg * (output_cond - output_uncond) + output_uncond;
 					latents = sampler.Step(noisePred, index, latents, seed);
-					//OnStepProgress(i + 1, steps);
 				}
 				Console.WriteLine($"end sampling");
 				Console.WriteLine($"begin decoder");

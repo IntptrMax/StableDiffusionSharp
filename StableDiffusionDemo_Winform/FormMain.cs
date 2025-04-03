@@ -1,7 +1,5 @@
 using StableDiffusionSharp;
-using StableDiffusionSharp.Modules;
 using System.Diagnostics;
-using TorchSharp;
 
 namespace StableDiffusionDemo_Winform
 {
@@ -22,15 +20,10 @@ namespace StableDiffusionDemo_Winform
 			ComboBox_Precition.SelectedIndex = 0;
 		}
 
-		private void Sd_StepProgress(object? sender, SD1.StepEventArgs e)
-		{
-			Label_State.Text = $"Processing {e.CurrentStep}/{e.TotalSteps}";
-		}
-
 		private void Button_ModelScan_Click(object sender, EventArgs e)
 		{
 			FileDialog fileDialog = new OpenFileDialog();
-			fileDialog.Filter = "Model files (*.safetensors)|*.safetensors";
+			fileDialog.Filter = "Model files|*.safetensors;*.ckpt;*.pt;*.pth|All files|*.*";
 			if (fileDialog.ShowDialog() == DialogResult.OK)
 			{
 				TextBox_ModelPath.Text = fileDialog.FileName;
@@ -42,30 +35,50 @@ namespace StableDiffusionDemo_Winform
 		{
 			if (File.Exists(modelPath))
 			{
-				//Task.Run(() =>
+				SDDeviceType deviceType = ComboBox_Device.SelectedIndex == 0 ? SDDeviceType.CUDA : SDDeviceType.CPU;
+				SDScalarType scalarType = ComboBox_Precition.SelectedIndex == 0 ? SDScalarType.Float16 : SDScalarType.Float32;
+				Task.Run(() =>
 				{
-					base.Invoke((Action)delegate
-					{
-						Button_ModelLoad.Enabled = false;
-					});
-					SDDeviceType deviceType = ComboBox_Device.SelectedIndex == 0 ? SDDeviceType.CUDA : SDDeviceType.CPU;
-					SDScalarType scalarType = ComboBox_Precition.SelectedIndex == 0 ? SDScalarType.Float16 : SDScalarType.Float32;
+					base.Invoke(() => Button_ModelLoad.Enabled = false);
 					sd = new StableDiffusion(deviceType, scalarType);
-					//sd.StepProgress += Sd_StepProgress;
+					sd.StepProgress += Sd_StepProgress;
 					sd.LoadModel(modelPath, vaeModelPath);
-					base.Invoke((Action)delegate
+					base.Invoke(() =>
 					{
 						Button_ModelLoad.Enabled = true;
 						Button_Generate.Enabled = true;
 						Label_State.Text = "Model loaded.";
 					});
-				};
-				//});
+				});
 			}
-			else
+		}
+
+		private void Button_VAEModelScan_Click(object sender, EventArgs e)
+		{
+			FileDialog fileDialog = new OpenFileDialog();
+			fileDialog.Filter = "Model files|*.safetensors;*.ckpt;*.pt;*.pth|All files|*.*";
+			if (fileDialog.ShowDialog() == DialogResult.OK)
 			{
-				MessageBox.Show("Please select a valid model file.");
+				TextBox_VaePath.Text = fileDialog.FileName;
+				vaeModelPath = fileDialog.FileName;
 			}
+		}
+
+		private void Sd_StepProgress(object? sender, StableDiffusion.StepEventArgs e)
+		{
+			base.Invoke(() =>
+			{
+				Label_State.Text = $"Progress: {e.CurrentStep}/{e.TotalSteps}";
+				if (e.VaeApproxImg != null)
+				{
+					MemoryStream memoryStream = new MemoryStream();
+					e.VaeApproxImg.Write(memoryStream, ImageMagick.MagickFormat.Jpg);
+					base.Invoke(() =>
+					{
+						PictureBox_Output.Image = Image.FromStream(memoryStream);
+					});
+				}
+			});
 		}
 
 		private void Button_Generate_Click(object sender, EventArgs e)
@@ -82,16 +95,16 @@ namespace StableDiffusionDemo_Winform
 			Task.Run(() =>
 			{
 				Stopwatch stopwatch = Stopwatch.StartNew();
-				base.Invoke((Action)delegate
+				base.Invoke(() =>
 				{
 					Button_ModelLoad.Enabled = false;
 					Button_Generate.Enabled = false;
 					Label_State.Text = "Generating...";
 				});
-				ImageMagick.MagickImage image = sd!.TextToImage(prompt, nprompt, clipSkip, width, height, step, seed, cfg);
+				ImageMagick.MagickImage image = sd.TextToImage(prompt, nprompt, clipSkip, width, height, step, seed, cfg);
 				MemoryStream memoryStream = new MemoryStream();
 				image.Write(memoryStream, ImageMagick.MagickFormat.Jpg);
-				base.Invoke((Action)delegate
+				base.Invoke(() =>
 				{
 					PictureBox_Output.Image = Image.FromStream(memoryStream);
 					Button_ModelLoad.Enabled = true;
@@ -100,20 +113,6 @@ namespace StableDiffusionDemo_Winform
 				});
 				GC.Collect();
 			});
-
-
-
-		}
-
-		private void Button_VAEModelScan_Click(object sender, EventArgs e)
-		{
-			FileDialog fileDialog = new OpenFileDialog();
-			fileDialog.Filter = "Model files (*.safetensors)|*.safetensors";
-			if (fileDialog.ShowDialog() == DialogResult.OK)
-			{
-				TextBox_VaePath.Text = fileDialog.FileName;
-				vaeModelPath = fileDialog.FileName;
-			}
 		}
 	}
 }

@@ -9,6 +9,28 @@ namespace StableDiffusionSharp
 		private SDModel model;
 		private readonly Device device;
 		private readonly ScalarType dtype;
+
+		public class StepEventArgs : EventArgs
+		{
+			public int CurrentStep { get; }
+			public int TotalSteps { get; }
+
+			public ImageMagick.MagickImage VaeApproxImg { get; }
+
+			public StepEventArgs(int currentStep, int totalSteps, ImageMagick.MagickImage vaeApproxImg)
+			{
+				CurrentStep = currentStep;
+				TotalSteps = totalSteps;
+				VaeApproxImg = vaeApproxImg;
+			}
+		}
+
+		public event EventHandler<StepEventArgs> StepProgress;
+		protected void OnStepProgress(int currentStep, int totalSteps, ImageMagick.MagickImage vaeApproxImg)
+		{
+			StepProgress?.Invoke(this, new StepEventArgs(currentStep, totalSteps, vaeApproxImg));
+		}
+
 		public StableDiffusion(SDDeviceType deviceType, SDScalarType scaleType) : base(nameof(StableDiffusion))
 		{
 			this.device = new Device((DeviceType)deviceType);
@@ -26,6 +48,12 @@ namespace StableDiffusionSharp
 				_ => throw new ArgumentException("Invalid model type")
 			};
 			model.LoadModel(modelPath, vaeModelPath, vocabPath, mergesPath);
+			model.StepProgress += Model_StepProgress;
+		}
+
+		private void Model_StepProgress(object? sender, SDModel.StepEventArgs e)
+		{
+			OnStepProgress(e.CurrentStep, e.TotalSteps, e.VAEApproxImg);
 		}
 
 		public ImageMagick.MagickImage TextToImage(string prompt, string nprompt = "", long clip_skip = 0, int width = 512, int height = 512, int steps = 20, long seed = 0, float cfg = 7.0f, SDSamplerType samplerType = SDSamplerType.Euler)

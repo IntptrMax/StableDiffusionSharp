@@ -50,5 +50,18 @@ Requires reference to one of libtorch-cpu, libtorch-cuda-12.1, libtorch-cuda-12.
     </None>
  </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Models\VAEApprox\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Models\VAEApprox\vaeapp_sd15.pth">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Models\VAEApprox\xlvaeapp.pth">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 
 </Project>
