@@ -1,4 +1,5 @@
-﻿using TorchSharp.Modules;
+﻿using System.Reflection;
+using TorchSharp.Modules;
 using static TorchSharp.torch;
 using static TorchSharp.torch.nn;
 
@@ -17,6 +18,47 @@ namespace StableDiffusionSharp.Modules
 
 		internal VAEApprox(int latent_channels = 4, Device? device = null, ScalarType? dtype = null) : base(nameof(VAEApprox))
 		{
+			string vaeSD15ApproxPath = @".\models\vaeapprox\vaeapp_sd15.pth";
+			string vaeSDXLApproxPath = @".\models\vaeapprox\xlvaeapp.pth";
+			string path = Path.GetDirectoryName(vaeSD15ApproxPath)!;
+			if (!Directory.Exists(path))
+			{
+				Directory.CreateDirectory(path);
+			}
+			Assembly _assembly = Assembly.GetExecutingAssembly();
+			if (!File.Exists(vaeSDXLApproxPath))
+			{
+				string sd15ResourceName = "StableDiffusionSharp.Models.VAEApprox.vaeapp_sd15.pth";
+				using (Stream stream = _assembly.GetManifestResourceStream(sd15ResourceName)!)
+				{
+					if (stream == null)
+					{
+						Console.WriteLine("Resource can't find!");
+						return;
+					}
+					using (FileStream fileStream = new FileStream(vaeSD15ApproxPath, FileMode.Create, FileAccess.Write))
+					{
+						stream.CopyTo(fileStream);
+					}
+				}
+			}
+			if (!File.Exists(vaeSDXLApproxPath))
+			{
+				string sdxlResourceName = "StableDiffusionSharp.Models.VAEApprox.xlvaeapp.pth";
+				using (Stream stream = _assembly.GetManifestResourceStream(sdxlResourceName)!)
+				{
+					if (stream == null)
+					{
+						Console.WriteLine("Resource can't find!");
+						return;
+					}
+					using (FileStream fileStream = new FileStream(vaeSDXLApproxPath, FileMode.Create, FileAccess.Write))
+					{
+						stream.CopyTo(fileStream);
+					}
+				}
+			}
+
 			conv1 = Conv2d(latent_channels, 8, (7, 7), device: device, dtype: dtype);
 			conv2 = Conv2d(8, 16, (5, 5), device: device, dtype: dtype);
 			conv3 = Conv2d(16, 32, (3, 3), device: device, dtype: dtype);

@@ -12,12 +12,14 @@
 Requires reference to one of libtorch-cpu, libtorch-cuda-12.1, libtorch-cuda-12.1-win-x64 or libtorch-cuda-12.1-linux-x64 version 2.5.1.0 to execute.</Description>
     <PackageProjectUrl>https://github.com/IntptrMax/StableDiffusionSharp</PackageProjectUrl>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
-    <Version>1.0.4</Version>
+    <Version>1.0.5</Version>
   </PropertyGroup>
 
   <ItemGroup>
     <None Remove="Models\Clip\merges.txt" />
     <None Remove="Models\Clip\vocab.json" />
+    <None Remove="Models\VAEApprox\vaeapp_sd15.pth" />
+    <None Remove="Models\VAEApprox\xlvaeapp.pth" />
   </ItemGroup>
 
   <ItemGroup>
@@ -30,6 +32,12 @@ Requires reference to one of libtorch-cpu, libtorch-cuda-12.1, libtorch-cuda-12.
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Models\VAEApprox\vaeapp_sd15.pth">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Models\VAEApprox\xlvaeapp.pth">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </EmbeddedResource>
   </ItemGroup>
 
@@ -49,19 +57,6 @@ Requires reference to one of libtorch-cpu, libtorch-cuda-12.1, libtorch-cuda-12.
       <PackagePath>\</PackagePath>
     </None>
  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Models\VAEApprox\" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Update="Models\VAEApprox\vaeapp_sd15.pth">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Models\VAEApprox\xlvaeapp.pth">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
 
 
 </Project>
