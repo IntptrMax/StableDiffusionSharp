@@ -9,7 +9,7 @@ namespace StableDiffusionDemo_Winform
 	{
 		string modelPath = string.Empty;
 		string vaeModelPath = string.Empty;
-		StableDiffusion sd;
+		StableDiffusion? sd;
 
 		public FormMain()
 		{
@@ -88,7 +88,7 @@ namespace StableDiffusionDemo_Winform
 					Button_Generate.Enabled = false;
 					Label_State.Text = "Generating...";
 				});
-				ImageMagick.MagickImage image = sd.TextToImage(prompt, nprompt, clipSkip, width, height, step, seed, cfg);
+				ImageMagick.MagickImage image = sd!.TextToImage(prompt, nprompt, clipSkip, width, height, step, seed, cfg);
 				MemoryStream memoryStream = new MemoryStream();
 				image.Write(memoryStream, ImageMagick.MagickFormat.Jpg);
 				base.Invoke((Action)delegate

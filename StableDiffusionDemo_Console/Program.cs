@@ -7,8 +7,8 @@ namespace StableDiffusionDemo_Console
 
 		static void Main(string[] args)
 		{
-			string sdModelPath = @".\Chilloutmix.safetensors";
-			string vaeModelPath = @".\vae.safetensors";
+			string sdModelPath = @".\realDream_sdxlPony15.safetensors";
+			string vaeModelPath = @".\sdxl.vae.safetensors";
 
 			string esrganModelPath = @".\RealESRGAN_x4plus.pth";
 			string i2iPrompt = "High quality, best quality, moon, grass, tree, boat.";
