@@ -3,7 +3,7 @@ using TorchSharp.Modules;
 using static TorchSharp.torch;
 using static TorchSharp.torch.nn;
 
-namespace StableDiffusionSharp
+namespace StableDiffusionSharp.Modules
 {
 	internal class Clip
 	{
@@ -27,6 +27,8 @@ namespace StableDiffusionSharp
 
 			public override Tensor forward(Tensor token, long num_skip, bool with_final_ln)
 			{
+				Device device = transformer.parameters().First().device;
+				token = token.to(device);
 				return transformer.forward(token, num_skip, with_final_ln);
 			}
 
@@ -106,8 +108,8 @@ namespace StableDiffusionSharp
 
 				public override Tensor forward(Tensor x)
 				{
-					x += this.self_attn.forward(this.layer_norm1.forward(x));
-					x += this.mlp.forward(this.layer_norm2.forward(x));
+					x += self_attn.forward(layer_norm1.forward(x));
+					x += mlp.forward(layer_norm2.forward(x));
 					return x;
 				}
 			}
@@ -122,32 +124,32 @@ namespace StableDiffusionSharp
 					out_features ??= in_features;
 					hidden_features ??= out_features;
 
-					this.fc1 = Linear(in_features, (long)hidden_features, hasBias: bias, device: device, dtype: dtype);
-					this.fc2 = Linear((long)hidden_features, (long)out_features, hasBias: bias, device: device, dtype: dtype);
+					fc1 = Linear(in_features, (long)hidden_features, hasBias: bias, device: device, dtype: dtype);
+					fc2 = Linear((long)hidden_features, (long)out_features, hasBias: bias, device: device, dtype: dtype);
 					this.act_layer = act_layer;
 					RegisterComponents();
 				}
 
 				public override Tensor forward(Tensor x)
 				{
-					x = this.fc1.forward(x);
+					x = fc1.forward(x);
 
-					switch (this.act_layer)
+					switch (act_layer)
 					{
 						case Activations.ReLU:
-							x = torch.nn.functional.relu(x);
+							x = functional.relu(x);
 							break;
 						case Activations.SiLU:
-							x = torch.nn.functional.silu(x);
+							x = functional.silu(x);
 							break;
 						case Activations.QuickGELU:
-							x = x * torch.sigmoid(1.702 * x);
+							x = x * sigmoid(1.702 * x);
 							break;
 						case Activations.GELU:
-							x = torch.nn.functional.gelu(x);
+							x = functional.gelu(x);
 							break;
 					}
-					x = this.fc2.forward(x);
+					x = fc2.forward(x);
 					return x;
 				}
 			}
@@ -163,10 +165,10 @@ namespace StableDiffusionSharp
 				public CLIPAttention(long embed_dim, long heads, Device? device = null, ScalarType? dtype = null) : base(nameof(CLIPAttention))
 				{
 					this.heads = heads;
-					this.q_proj = nn.Linear(embed_dim, embed_dim, hasBias: true, device: device, dtype: dtype);
-					this.k_proj = nn.Linear(embed_dim, embed_dim, hasBias: true, device: device, dtype: dtype);
-					this.v_proj = nn.Linear(embed_dim, embed_dim, hasBias: true, device: device, dtype: dtype);
-					this.out_proj = nn.Linear(embed_dim, embed_dim, hasBias: true, device: device, dtype: dtype);
+					q_proj = Linear(embed_dim, embed_dim, hasBias: true, device: device, dtype: dtype);
+					k_proj = Linear(embed_dim, embed_dim, hasBias: true, device: device, dtype: dtype);
+					v_proj = Linear(embed_dim, embed_dim, hasBias: true, device: device, dtype: dtype);
+					out_proj = Linear(embed_dim, embed_dim, hasBias: true, device: device, dtype: dtype);
 
 					RegisterComponents();
 				}
@@ -175,12 +177,12 @@ namespace StableDiffusionSharp
 				{
 					using (var _ = NewDisposeScope())
 					{
-						Tensor q = this.q_proj.forward(x);
-						Tensor k = this.k_proj.forward(x);
-						Tensor v = this.v_proj.forward(x);
-						Tensor output = attention(q, k, v, this.heads);
+						Tensor q = q_proj.forward(x);
+						Tensor k = k_proj.forward(x);
+						Tensor v = v_proj.forward(x);
+						Tensor output = attention(q, k, v, heads);
 						//TensorInfo output = self_atten(to_q, to_k, to_v, this.heads);
-						return this.out_proj.forward(output).MoveToOuterDisposeScope();
+						return out_proj.forward(output).MoveToOuterDisposeScope();
 					}
 				}
 
@@ -196,14 +198,14 @@ namespace StableDiffusionSharp
 					k = k.view(interim_shape).transpose(1, 2);
 					v = v.view(interim_shape).transpose(1, 2);
 
-					var weight = torch.matmul(q, k.transpose(-1, -2));
-					var mask = torch.ones_like(weight).triu(1).to(torch.@bool);
-					weight.masked_fill_(mask, Single.NegativeInfinity);
+					var weight = matmul(q, k.transpose(-1, -2));
+					var mask = ones_like(weight).triu(1).to(@bool);
+					weight.masked_fill_(mask, float.NegativeInfinity);
 
 					weight = weight / (float)Math.Sqrt(d_head);
-					weight = torch.nn.functional.softmax(weight, dim: -1);
+					weight = functional.softmax(weight, dim: -1);
 
-					var output = torch.matmul(weight, v);
+					var output = matmul(weight, v);
 					output = output.transpose(1, 2);
 					output = output.reshape(input_shape);
 					return output;
@@ -218,7 +220,7 @@ namespace StableDiffusionSharp
 					q = q.view(b, -1, heads, dim_head).transpose(1, 2);
 					k = k.view(b, -1, heads, dim_head).transpose(1, 2);
 					v = v.view(b, -1, heads, dim_head).transpose(1, 2);
-					Tensor output = torch.nn.functional.scaled_dot_product_attention(q, k, v, is_casual: true);
+					Tensor output = functional.scaled_dot_product_attention(q, k, v, is_casual: true);
 					output = output.transpose(1, 2);
 					output = output.view(b, -1, heads * dim_head);
 					return output;
@@ -241,7 +243,7 @@ namespace StableDiffusionSharp
 
 				public override Tensor forward(Tensor x, long num_skip)
 				{
-					long num_act = num_skip > 0 ? (layers.Count - num_skip) : layers.Count;
+					long num_act = num_skip > 0 ? layers.Count - num_skip : layers.Count;
 					for (int i = 0; i < num_act; i++)
 					{
 						x = layers[i].forward(x);
@@ -265,8 +267,8 @@ namespace StableDiffusionSharp
 			public ViT_bigG_Clip(long n_vocab = 49408, long n_token = 77, long num_layers = 32, long n_heads = 20, long embed_dim = 1280, long intermediate_size = 1280 * 4, int adm_in_channels = 2816, Device? device = null, ScalarType? dtype = null) : base(nameof(ViT_bigG_Clip))
 			{
 				token_embedding = Embedding(n_vocab, embed_dim, device: device, dtype: dtype);
-				positional_embedding = Parameter(torch.zeros(size: [n_token, embed_dim], device: device, dtype: dtype));
-				text_projection = Parameter(torch.zeros(size: [embed_dim, embed_dim], device: device, dtype: dtype));
+				positional_embedding = Parameter(zeros(size: [n_token, embed_dim], device: device, dtype: dtype));
+				text_projection = Parameter(zeros(size: [embed_dim, embed_dim], device: device, dtype: dtype));
 				transformer = new Transformer(num_layers, embed_dim, n_heads, intermediate_size, Activations.GELU, device: device, dtype: dtype);
 				ln_final = LayerNorm(embed_dim, device: device, dtype: dtype);
 				this.adm_in_channels = adm_in_channels;
@@ -284,9 +286,9 @@ namespace StableDiffusionSharp
 				if (return_pooled)
 				{
 					x = x[.., 6, ..];
-					x = torch.nn.functional.linear(x, text_projection);
-					long padLength = this.adm_in_channels - x.shape[1];
-					x = torch.nn.functional.pad(x, [0, padLength, 0, 0]);
+					x = functional.linear(x, text_projection);
+					long padLength = adm_in_channels - x.shape[1];
+					x = functional.pad(x, [0, padLength, 0, 0]);
 					return x;
 				}
 				return x;
@@ -307,7 +309,7 @@ namespace StableDiffusionSharp
 
 				public override Tensor forward(Tensor x, int num_skip)
 				{
-					int num_act = num_skip > 0 ? (resblocks.Count - num_skip) : resblocks.Count;
+					int num_act = num_skip > 0 ? resblocks.Count - num_skip : resblocks.Count;
 					for (int i = 0; i < num_act; i++)
 					{
 						x = resblocks[i].forward(x);
@@ -334,8 +336,8 @@ namespace StableDiffusionSharp
 
 				public override Tensor forward(Tensor x)
 				{
-					x += this.attn.forward(this.ln_1.forward(x));
-					x += this.mlp.forward(this.ln_2.forward(x));
+					x += attn.forward(ln_1.forward(x));
+					x += mlp.forward(ln_2.forward(x));
 					return x;
 				}
 			}
@@ -350,32 +352,32 @@ namespace StableDiffusionSharp
 					out_features ??= in_features;
 					hidden_features ??= out_features;
 
-					this.c_fc = Linear(in_features, (long)hidden_features, hasBias: bias, device: device, dtype: dtype);
-					this.c_proj = Linear((long)hidden_features, (long)out_features, hasBias: bias, device: device, dtype: dtype);
+					c_fc = Linear(in_features, (long)hidden_features, hasBias: bias, device: device, dtype: dtype);
+					c_proj = Linear((long)hidden_features, (long)out_features, hasBias: bias, device: device, dtype: dtype);
 					this.act_layer = act_layer;
 					RegisterComponents();
 				}
 
 				public override Tensor forward(Tensor x)
 				{
-					x = this.c_fc.forward(x);
+					x = c_fc.forward(x);
 
-					switch (this.act_layer)
+					switch (act_layer)
 					{
 						case Activations.ReLU:
-							x = torch.nn.functional.relu(x);
+							x = functional.relu(x);
 							break;
 						case Activations.SiLU:
-							x = torch.nn.functional.silu(x);
+							x = functional.silu(x);
 							break;
 						case Activations.QuickGELU:
-							x = x * torch.sigmoid(1.702 * x);
+							x = x * sigmoid(1.702 * x);
 							break;
 						case Activations.GELU:
-							x = torch.nn.functional.gelu(x);
+							x = functional.gelu(x);
 							break;
 					}
-					x = this.c_proj.forward(x);
+					x = c_proj.forward(x);
 					return x;
 				}
 			}
@@ -390,9 +392,9 @@ namespace StableDiffusionSharp
 				public MultiheadAttention(long embed_dim, long heads, Device? device = null, ScalarType? dtype = null) : base(nameof(MultiheadAttention))
 				{
 					this.heads = heads;
-					this.in_proj_weight = Parameter(torch.zeros([3 * embed_dim, embed_dim], device: device, dtype: dtype));
-					this.in_proj_bias = Parameter(torch.zeros([3 * embed_dim], device: device, dtype: dtype));
-					this.out_proj = nn.Linear(embed_dim, embed_dim, hasBias: true, device: device, dtype: dtype);
+					in_proj_weight = Parameter(zeros([3 * embed_dim, embed_dim], device: device, dtype: dtype));
+					in_proj_bias = Parameter(zeros([3 * embed_dim], device: device, dtype: dtype));
+					out_proj = Linear(embed_dim, embed_dim, hasBias: true, device: device, dtype: dtype);
 
 					RegisterComponents();
 				}
@@ -401,13 +403,13 @@ namespace StableDiffusionSharp
 				{
 					using (var _ = NewDisposeScope())
 					{
-						Tensor[] qkv = torch.nn.functional.linear(x, this.in_proj_weight, this.in_proj_bias).chunk(3, 2);
+						Tensor[] qkv = functional.linear(x, in_proj_weight, in_proj_bias).chunk(3, 2);
 						Tensor q = qkv[0];
 						Tensor k = qkv[1];
 						Tensor v = qkv[2];
-						Tensor output = attention(q, k, v, this.heads);
+						Tensor output = attention(q, k, v, heads);
 						//TensorInfo output = self_atten(to_q, to_k, to_v, this.heads);
-						return this.out_proj.forward(output).MoveToOuterDisposeScope();
+						return out_proj.forward(output).MoveToOuterDisposeScope();
 					}
 				}
 
@@ -423,14 +425,14 @@ namespace StableDiffusionSharp
 					k = k.view(interim_shape).transpose(1, 2);
 					v = v.view(interim_shape).transpose(1, 2);
 
-					var weight = torch.matmul(q, k.transpose(-1, -2));
-					var mask = torch.ones_like(weight).triu(1).to(torch.@bool);
-					weight.masked_fill_(mask, Single.NegativeInfinity);
+					var weight = matmul(q, k.transpose(-1, -2));
+					var mask = ones_like(weight).triu(1).to(@bool);
+					weight.masked_fill_(mask, float.NegativeInfinity);
 
 					weight = weight / (float)Math.Sqrt(d_head);
-					weight = torch.nn.functional.softmax(weight, dim: -1);
+					weight = functional.softmax(weight, dim: -1);
 
-					var output = torch.matmul(weight, v);
+					var output = matmul(weight, v);
 					output = output.transpose(1, 2);
 					output = output.reshape(input_shape);
 					return output;
@@ -445,7 +447,7 @@ namespace StableDiffusionSharp
 					q = q.view(b, -1, heads, dim_head).transpose(1, 2);
 					k = k.view(b, -1, heads, dim_head).transpose(1, 2);
 					v = v.view(b, -1, heads, dim_head).transpose(1, 2);
-					Tensor output = torch.nn.functional.scaled_dot_product_attention(q, k, v, is_casual: true);
+					Tensor output = functional.scaled_dot_product_attention(q, k, v, is_casual: true);
 					output = output.transpose(1, 2);
 					output = output.view(b, -1, heads * dim_head);
 					return output;
@@ -453,7 +455,7 @@ namespace StableDiffusionSharp
 			}
 		}
 
-		internal class SDCliper : Module<Tensor, long, bool, Tensor>
+		internal class SDCliper : Module<Tensor, long, (Tensor, Tensor)>
 		{
 			private readonly ViT_L_Clip cond_stage_model;
 			private readonly long n_token;
@@ -466,19 +468,19 @@ namespace StableDiffusionSharp
 				cond_stage_model = new ViT_L_Clip(n_vocab, n_token, num_layers, n_heads, embed_dim, intermediate_size, device: device, dtype: dtype);
 				RegisterComponents();
 			}
-			public override Tensor forward(Tensor token, long num_skip, bool with_final_ln)
+			public override (Tensor, Tensor) forward(Tensor token, long num_skip)
 			{
 				using (NewDisposeScope())
 				{
 					Device device = cond_stage_model.parameters().First().device;
 					long padLength = n_token - token.shape[1];
-					Tensor token1 = torch.nn.functional.pad(token, [0, padLength, 0, 0], value: endToken);
-					return cond_stage_model.forward(token1, num_skip, with_final_ln).MoveToOuterDisposeScope();
+					Tensor token1 = functional.pad(token, [0, padLength, 0, 0], value: endToken);
+					return (cond_stage_model.forward(token1, num_skip, true).MoveToOuterDisposeScope(), zeros(1).MoveToOuterDisposeScope());
 				}
 			}
 		}
 
-		internal class SDXLCliper : Module<Tensor, (Tensor, Tensor)>
+		internal class SDXLCliper : Module<Tensor, long, (Tensor, Tensor)>
 		{
 			private readonly Embedders conditioner;
 			public SDXLCliper(long n_vocab = 49408, long n_token = 77, Device? device = null, ScalarType? dtype = null) : base(nameof(SDXLCliper))
@@ -487,7 +489,7 @@ namespace StableDiffusionSharp
 				RegisterComponents();
 			}
 
-			public override (Tensor, Tensor) forward(Tensor token)
+			public override (Tensor, Tensor) forward(Tensor token, long num_skip)
 			{
 				Device device = conditioner.parameters().First().device;
 				token = token.to(device);
@@ -512,8 +514,8 @@ namespace StableDiffusionSharp
 					using (NewDisposeScope())
 					{
 						long padLength = n_token - token.shape[1];
-						Tensor token1 = torch.nn.functional.pad(token, [0, padLength, 0, 0], value: this.endToken);
-						Tensor token2 = torch.nn.functional.pad(token, [0, padLength, 0, 0]);
+						Tensor token1 = functional.pad(token, [0, padLength, 0, 0], value: endToken);
+						Tensor token2 = functional.pad(token, [0, padLength, 0, 0]);
 
 						Tensor vit_l_result = ((ViT_L_Clip)embedders[0]).forward(token1, 2, false);
 						Tensor vit_bigG_result = ((Model)embedders[1]).forward(token2, 2, false, false);

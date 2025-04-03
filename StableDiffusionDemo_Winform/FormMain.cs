@@ -1,11 +1,14 @@
 using StableDiffusionSharp;
+using StableDiffusionSharp.Modules;
 using System.Diagnostics;
+using TorchSharp;
 
 namespace StableDiffusionDemo_Winform
 {
 	public partial class FormMain : Form
 	{
 		string modelPath = string.Empty;
+		string vaeModelPath = string.Empty;
 		StableDiffusion sd;
 
 		public FormMain()
@@ -15,11 +18,11 @@ namespace StableDiffusionDemo_Winform
 
 		private void FormMain_Load(object sender, EventArgs e)
 		{
-			sd = new StableDiffusion();
-			sd.StepProgress += Sd_StepProgress;
+			ComboBox_Device.SelectedIndex = 0;
+			ComboBox_Precition.SelectedIndex = 0;
 		}
 
-		private void Sd_StepProgress(object? sender, StableDiffusion.StepEventArgs e)
+		private void Sd_StepProgress(object? sender, SD1.StepEventArgs e)
 		{
 			Label_State.Text = $"Processing {e.CurrentStep}/{e.TotalSteps}";
 		}
@@ -39,20 +42,25 @@ namespace StableDiffusionDemo_Winform
 		{
 			if (File.Exists(modelPath))
 			{
-				Task.Run(() =>
+				//Task.Run(() =>
 				{
 					base.Invoke((Action)delegate
 					{
 						Button_ModelLoad.Enabled = false;
 					});
-					sd.LoadModel(modelPath);
+					SDDeviceType deviceType = ComboBox_Device.SelectedIndex == 0 ? SDDeviceType.CUDA : SDDeviceType.CPU;
+					SDScalarType scalarType = ComboBox_Precition.SelectedIndex == 0 ? SDScalarType.Float16 : SDScalarType.Float32;
+					sd = new StableDiffusion(deviceType, scalarType);
+					//sd.StepProgress += Sd_StepProgress;
+					sd.LoadModel(modelPath, vaeModelPath);
 					base.Invoke((Action)delegate
 					{
 						Button_ModelLoad.Enabled = true;
 						Button_Generate.Enabled = true;
-						Label_State.Text = "Model loaded.";	
+						Label_State.Text = "Model loaded.";
 					});
-				});
+				};
+				//});
 			}
 			else
 			{
@@ -66,9 +74,10 @@ namespace StableDiffusionDemo_Winform
 			string nprompt = TextBox_NPrompt.Text;
 			int step = (int)NumericUpDown_Step.Value;
 			float cfg = (float)NumericUpDown_CFG.Value;
-			ulong seed = 0;
+			long seed = 0;
 			int width = (int)NumericUpDown_Width.Value;
 			int height = (int)NumericUpDown_Height.Value;
+			int clipSkip = (int)NumericUpDown_ClipSkip.Value;
 
 			Task.Run(() =>
 			{
@@ -79,7 +88,7 @@ namespace StableDiffusionDemo_Winform
 					Button_Generate.Enabled = false;
 					Label_State.Text = "Generating...";
 				});
-				ImageMagick.MagickImage image = sd.TextToImage(prompt, nprompt, width, height, step, seed, cfg);
+				ImageMagick.MagickImage image = sd.TextToImage(prompt, nprompt, clipSkip, width, height, step, seed, cfg);
 				MemoryStream memoryStream = new MemoryStream();
 				image.Write(memoryStream, ImageMagick.MagickFormat.Jpg);
 				base.Invoke((Action)delegate
@@ -94,6 +103,17 @@ namespace StableDiffusionDemo_Winform
 
 
 
+		}
+
+		private void Button_VAEModelScan_Click(object sender, EventArgs e)
+		{
+			FileDialog fileDialog = new OpenFileDialog();
+			fileDialog.Filter = "Model files (*.safetensors)|*.safetensors";
+			if (fileDialog.ShowDialog() == DialogResult.OK)
+			{
+				TextBox_VaePath.Text = fileDialog.FileName;
+				vaeModelPath = fileDialog.FileName;
+			}
 		}
 	}
 }

@@ -10,7 +10,7 @@ namespace StableDiffusionSharp.ModelLoader
 		private ZipArchive zip;
 		private ReadOnlyCollection<ZipArchiveEntry> entries;
 
-		private List<TensorInfo> ReadTensorsInfoFromFile(string fileName)
+		internal List<TensorInfo> ReadTensorsInfoFromFile(string fileName)
 		{
 			List<TensorInfo> tensors = new List<TensorInfo>();
 

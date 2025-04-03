@@ -5,9 +5,48 @@ using System.Text;
 using TorchSharp;
 using static TorchSharp.torch;
 
-namespace StableDiffusionSharp
+namespace StableDiffusionSharp.Modules
 {
-	public class SDXL : IDisposable
+
+	//public class SDXL : SD1
+	//{
+	//	// Default parameters
+	//	private float linear_start = 0.00085f;
+	//	private float linear_end = 0.0120f;
+	//	private float scale_factor = 0.13025f;
+	//	private int num_timesteps_cond = 1;
+	//	private int timesteps = 1000;
+
+	//	// UNet config
+	//	private int in_channels = 4;
+	//	private int model_channels = 320;
+	//	private int context_dim = 2048;
+	//	private int num_head = 20;
+	//	private float dropout = 0.0f;
+	//	private int adm_in_channels = 2816;
+
+	//	// first stage config:
+	//	private int embed_dim = 4;
+	//	private bool double_z = true;
+	//	private int z_channels = 4;
+
+	//	public SDXL(Device? device = null, ScalarType? dtype = null) : base(device, dtype)
+	//	{
+	//		this.device = device;
+	//		this.dtype = (ScalarType)dtype;
+	//		torchvision.io.DefaultImager = new torchvision.io.SkiaImager();
+	//		cliper = new Clip.SDXLCliper();
+	//		cliper.eval();
+	//		diffusion = new SDXLUnet(model_channels, in_channels, num_head, context_dim, adm_in_channels, dropout, device: device, dtype: dtype);
+	//		diffusion.eval();
+	//		decoder = new VAE.Decoder(embed_dim: embed_dim, z_channels: z_channels, device: device, dtype: dtype);
+	//		decoder.eval();
+	//		encoder = new VAE.Encoder(embed_dim: embed_dim, z_channels: z_channels, double_z: double_z);
+	//		encoder.eval();
+	//	}
+	//}
+
+	public class SDXL : SDModel
 	{
 		// Default parameters
 		private float linear_start = 0.00085f;
@@ -78,18 +117,18 @@ namespace StableDiffusionSharp
 			}
 		}
 
-		public SDXL(SDDeviceType deviceType = SDDeviceType.CUDA, SDScalarType scalarType = SDScalarType.Float16)
+		public SDXL(Device? device = null, ScalarType? dtype = null)
 		{
-			this.device = new Device((DeviceType)deviceType);
-			this.dtype = (ScalarType)scalarType;
+			this.device = device;
+			this.dtype = (ScalarType)dtype;
 			torchvision.io.DefaultImager = new torchvision.io.SkiaImager();
 			cliper = new Clip.SDXLCliper();
 			cliper.eval();
 			diffusion = new SDXLUnet(model_channels, in_channels, num_head, context_dim, adm_in_channels, dropout, device: device, dtype: dtype);
 			diffusion.eval();
-			decoder = new VAE.Decoder(embed_dim: embed_dim, z_channels: z_channels, device, dtype);
+			decoder = new VAE.Decoder(embed_dim: embed_dim, z_channels: z_channels, device: device, dtype: dtype);
 			decoder.eval();
-			encoder = new VAE.Encoder(embed_dim: embed_dim, z_channels: z_channels, double_z: double_z);
+			encoder = new VAE.Encoder(embed_dim: embed_dim, z_channels: z_channels, double_z: double_z, device: device, dtype: dtype);
 			encoder.eval();
 		}
 
@@ -115,33 +154,6 @@ namespace StableDiffusionSharp
 			}
 		}
 
-		private (Tensor, Tensor) Clip(string prompt, string nprompt)
-		{
-			CheckModelLoaded();
-			if (tempPromptHash == (prompt + nprompt).GetHashCode())
-			{
-				return (this.tempTextContext, this.tempVector);
-			}
-			else
-			{
-				using (torch.no_grad())
-				using (NewDisposeScope())
-				{
-					Tensor cond_tokens = tokenizer.Tokenize(prompt);
-					(Tensor cond_context, Tensor cond_vector) = cliper.forward(cond_tokens);
-
-					Tensor uncond_tokens = tokenizer.Tokenize(nprompt);
-					(Tensor uncond_context, Tensor uncond_vector) = cliper.forward(uncond_tokens);
-
-					Tensor context = torch.cat([cond_context, uncond_context]);
-					this.tempPromptHash = (prompt + nprompt).GetHashCode();
-					this.tempTextContext = context;
-					this.tempVector = torch.cat([cond_vector, uncond_vector]);
-					return (context.MoveToOuterDisposeScope(), tempVector.MoveToOuterDisposeScope());
-				}
-			}
-		}
-
 		/// <summary>
 		/// Generate image from text
 		/// </summary>
@@ -152,7 +164,7 @@ namespace StableDiffusionSharp
 		/// <param name="steps">Step to generate image</param>
 		/// <param name="seed">Random seed for generating image, it will get random when the value is 0</param>
 		/// <param name="cfg">Classifier Free Guidance</param>
-		public ImageMagick.MagickImage TextToImage(string prompt, string nprompt = "", int width = 512, int height = 512, int steps = 20, long seed = 0, float cfg = 7.0f, SDSamplerType samplerType = SDSamplerType.Euler)
+		public ImageMagick.MagickImage TextToImage(string prompt, string nprompt = "", long clip_skip = 0, int width = 512, int height = 512, int steps = 20, long seed = 0, float cfg = 7.0f, SDSamplerType samplerType = SDSamplerType.Euler)
 		{
 			CheckModelLoaded();
 
@@ -245,8 +257,30 @@ namespace StableDiffusionSharp
 			}
 		}
 
+		private (Tensor, Tensor) Clip(string prompt, string nprompt)
+		{
+			CheckModelLoaded();
+			if (tempPromptHash != (prompt + nprompt).GetHashCode())
+			{
+				using (no_grad())
+				using (NewDisposeScope())
+				{
+					Tensor cond_tokens = tokenizer.Tokenize(prompt).to(device);
+					(Tensor cond_context, Tensor cond_pooled) = cliper.forward(cond_tokens, 2);
+					Tensor uncond_tokens = tokenizer.Tokenize(nprompt).to(device);
+					(Tensor uncond_context, Tensor uncond_pooled) = cliper.forward(uncond_tokens, 2);
+					Tensor context = cat([cond_context, uncond_context]);
+					tempPromptHash = (prompt + nprompt).GetHashCode();
+					tempTextContext = context;
+					tempVector = cat([cond_pooled, uncond_pooled]);
+					tempTextContext = tempTextContext.MoveToOuterDisposeScope();
+					tempVector = tempVector.MoveToOuterDisposeScope();
+				}
+			}
+			return (tempTextContext, tempVector);
+		}
 
-		public ImageMagick.MagickImage ImageToImage(ImageMagick.MagickImage orgImage, string prompt, string nprompt = "", int steps = 20, float strength = 0.75f, long seed = 0, long subSeed = 0, float cfg = 7.0f, SDSamplerType samplerType = SDSamplerType.Euler)
+		public ImageMagick.MagickImage ImageToImage(ImageMagick.MagickImage orgImage, string prompt, string nprompt = "", long clip_skip = 0, int steps = 20, float strength = 0.75f, long seed = 0, long subSeed = 0, float cfg = 7.0f, SDSamplerType samplerType = SDSamplerType.Euler)
 		{
 			CheckModelLoaded();
 

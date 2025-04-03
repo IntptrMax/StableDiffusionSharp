@@ -29,6 +29,15 @@
 		private void InitializeComponent()
 		{
 			groupBox1 = new GroupBox();
+			label11 = new Label();
+			NumericUpDown_ClipSkip = new NumericUpDown();
+			label10 = new Label();
+			Button_VAEModelScan = new Button();
+			TextBox_VaePath = new TextBox();
+			label9 = new Label();
+			label8 = new Label();
+			ComboBox_Precition = new ComboBox();
+			ComboBox_Device = new ComboBox();
 			Button_ModelLoad = new Button();
 			Button_ModelScan = new Button();
 			label1 = new Label();
@@ -54,6 +63,7 @@
 			tabPage2 = new TabPage();
 			tabPage3 = new TabPage();
 			groupBox1.SuspendLayout();
+			((System.ComponentModel.ISupportInitialize)NumericUpDown_ClipSkip).BeginInit();
 			tabControl1.SuspendLayout();
 			tabPage1.SuspendLayout();
 			groupBox2.SuspendLayout();
@@ -66,6 +76,15 @@
 			// 
 			// groupBox1
 			// 
+			groupBox1.Controls.Add(label11);
+			groupBox1.Controls.Add(NumericUpDown_ClipSkip);
+			groupBox1.Controls.Add(label10);
+			groupBox1.Controls.Add(Button_VAEModelScan);
+			groupBox1.Controls.Add(TextBox_VaePath);
+			groupBox1.Controls.Add(label9);
+			groupBox1.Controls.Add(label8);
+			groupBox1.Controls.Add(ComboBox_Precition);
+			groupBox1.Controls.Add(ComboBox_Device);
 			groupBox1.Controls.Add(Button_ModelLoad);
 			groupBox1.Controls.Add(Button_ModelScan);
 			groupBox1.Controls.Add(label1);
@@ -76,6 +95,88 @@
 			groupBox1.TabIndex = 0;
 			groupBox1.TabStop = false;
 			groupBox1.Text = "Base";
+			// 
+			// label11
+			// 
+			label11.AutoSize = true;
+			label11.Location = new Point(461, 117);
+			label11.Name = "label11";
+			label11.Size = new Size(59, 17);
+			label11.TabIndex = 12;
+			label11.Text = "Clip Skip";
+			// 
+			// NumericUpDown_ClipSkip
+			// 
+			NumericUpDown_ClipSkip.Location = new Point(526, 114);
+			NumericUpDown_ClipSkip.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
+			NumericUpDown_ClipSkip.Name = "NumericUpDown_ClipSkip";
+			NumericUpDown_ClipSkip.Size = new Size(62, 23);
+			NumericUpDown_ClipSkip.TabIndex = 11;
+			// 
+			// label10
+			// 
+			label10.AutoSize = true;
+			label10.Location = new Point(18, 78);
+			label10.Name = "label10";
+			label10.Size = new Size(60, 17);
+			label10.TabIndex = 10;
+			label10.Text = "VAE Path";
+			// 
+			// Button_VAEModelScan
+			// 
+			Button_VAEModelScan.Location = new Point(708, 72);
+			Button_VAEModelScan.Name = "Button_VAEModelScan";
+			Button_VAEModelScan.Size = new Size(101, 23);
+			Button_VAEModelScan.TabIndex = 9;
+			Button_VAEModelScan.Text = "Scan";
+			Button_VAEModelScan.UseVisualStyleBackColor = true;
+			Button_VAEModelScan.Click += Button_VAEModelScan_Click;
+			// 
+			// TextBox_VaePath
+			// 
+			TextBox_VaePath.Location = new Point(113, 72);
+			TextBox_VaePath.Name = "TextBox_VaePath";
+			TextBox_VaePath.ReadOnly = true;
+			TextBox_VaePath.Size = new Size(564, 23);
+			TextBox_VaePath.TabIndex = 8;
+			// 
+			// label9
+			// 
+			label9.AutoSize = true;
+			label9.Location = new Point(217, 115);
+			label9.Name = "label9";
+			label9.Size = new Size(58, 17);
+			label9.TabIndex = 7;
+			label9.Text = "Precition";
+			// 
+			// label8
+			// 
+			label8.AutoSize = true;
+			label8.Location = new Point(18, 115);
+			label8.Name = "label8";
+			label8.Size = new Size(46, 17);
+			label8.TabIndex = 6;
+			label8.Text = "Device";
+			// 
+			// ComboBox_Precition
+			// 
+			ComboBox_Precition.DropDownStyle = ComboBoxStyle.DropDownList;
+			ComboBox_Precition.FormattingEnabled = true;
+			ComboBox_Precition.Items.AddRange(new object[] { "fp16", "fp32" });
+			ComboBox_Precition.Location = new Point(281, 112);
+			ComboBox_Precition.Name = "ComboBox_Precition";
+			ComboBox_Precition.Size = new Size(121, 25);
+			ComboBox_Precition.TabIndex = 5;
+			// 
+			// ComboBox_Device
+			// 
+			ComboBox_Device.DropDownStyle = ComboBoxStyle.DropDownList;
+			ComboBox_Device.FormattingEnabled = true;
+			ComboBox_Device.Items.AddRange(new object[] { "CUDA", "CPU" });
+			ComboBox_Device.Location = new Point(70, 112);
+			ComboBox_Device.Name = "ComboBox_Device";
+			ComboBox_Device.Size = new Size(121, 25);
+			ComboBox_Device.TabIndex = 4;
 			// 
 			// Button_ModelLoad
 			// 
@@ -332,10 +433,11 @@
 			Controls.Add(tabControl1);
 			Controls.Add(groupBox1);
 			Name = "FormMain";
-			Text = "Stabel SDUnet Sharp";
+			Text = "Stabel Diffusion Sharp";
 			Load += FormMain_Load;
 			groupBox1.ResumeLayout(false);
 			groupBox1.PerformLayout();
+			((System.ComponentModel.ISupportInitialize)NumericUpDown_ClipSkip).EndInit();
 			tabControl1.ResumeLayout(false);
 			tabPage1.ResumeLayout(false);
 			groupBox2.ResumeLayout(false);
@@ -375,5 +477,14 @@
 		private Label Label_State;
 		private TabPage tabPage2;
 		private TabPage tabPage3;
+		private Label label9;
+		private Label label8;
+		private ComboBox ComboBox_Precition;
+		private ComboBox ComboBox_Device;
+		private Button Button_VAEModelScan;
+		private TextBox TextBox_VaePath;
+		private Label label10;
+		private Label label11;
+		private NumericUpDown NumericUpDown_ClipSkip;
 	}
 }

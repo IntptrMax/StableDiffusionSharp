@@ -18,4 +18,14 @@
 		EulerAncestral = 0,
 		Euler = 1,
 	}
+
+	public enum ModelType
+	{
+		SD1,
+		SD2,
+		SD3,
+		SDXL,
+		FLUX,
+	}
+
 }

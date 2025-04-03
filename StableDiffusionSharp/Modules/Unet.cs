@@ -3,7 +3,7 @@ using TorchSharp.Modules;
 using static TorchSharp.torch;
 using static TorchSharp.torch.nn;
 
-namespace StableDiffusionSharp
+namespace StableDiffusionSharp.Modules
 {
 	internal class CrossAttention : Module<Tensor, Tensor, Tensor>
 	{
@@ -17,13 +17,13 @@ namespace StableDiffusionSharp
 
 		public CrossAttention(long channels, long d_cross, long n_heads, bool causal_mask = false, bool in_proj_bias = false, bool out_proj_bias = true, float dropout_p = 0.0f, Device? device = null, ScalarType? dtype = null) : base(nameof(CrossAttention))
 		{
-			this.to_q = Linear(channels, channels, hasBias: in_proj_bias, device: device, dtype: dtype);
-			this.to_k = Linear(d_cross, channels, hasBias: in_proj_bias, device: device, dtype: dtype);
-			this.to_v = Linear(d_cross, channels, hasBias: in_proj_bias, device: device, dtype: dtype);
-			this.to_out = Sequential(Linear(channels, channels, hasBias: out_proj_bias, device: device, dtype: dtype), Dropout(dropout_p, inplace: false));
-			this.n_heads_ = n_heads;
-			this.d_head = channels / n_heads;
-			this.causal_mask_ = causal_mask;
+			to_q = Linear(channels, channels, hasBias: in_proj_bias, device: device, dtype: dtype);
+			to_k = Linear(d_cross, channels, hasBias: in_proj_bias, device: device, dtype: dtype);
+			to_v = Linear(d_cross, channels, hasBias: in_proj_bias, device: device, dtype: dtype);
+			to_out = Sequential(Linear(channels, channels, hasBias: out_proj_bias, device: device, dtype: dtype), Dropout(dropout_p, inplace: false));
+			n_heads_ = n_heads;
+			d_head = channels / n_heads;
+			causal_mask_ = causal_mask;
 			RegisterComponents();
 		}
 
@@ -43,7 +43,7 @@ namespace StableDiffusionSharp
 				q = q.view(interim_shape).transpose(1, 2);
 				k = k.view(interim_shape).transpose(1, 2);
 				v = v.view(interim_shape).transpose(1, 2);
-				Tensor output = torch.nn.functional.scaled_dot_product_attention(q, k, v, is_casual: causal_mask_);
+				Tensor output = functional.scaled_dot_product_attention(q, k, v, is_casual: causal_mask_);
 				output = output.transpose(1, 2).reshape(input_shape);
 				output = to_out.forward(output);
 				return output.MoveToOuterDisposeScope();
@@ -67,22 +67,22 @@ namespace StableDiffusionSharp
 			out_channels = out_channels < 1 ? in_channels : out_channels;
 			this.out_channels = out_channels;
 
-			this.in_layers = Sequential(GroupNorm(32, in_channels, device: device, dtype: dtype), SiLU(), Conv2d(in_channels, out_channels, kernel_size: 3, stride: 1, padding: 1, device: device, dtype: dtype));
+			in_layers = Sequential(GroupNorm(32, in_channels, device: device, dtype: dtype), SiLU(), Conv2d(in_channels, out_channels, kernel_size: 3, stride: 1, padding: 1, device: device, dtype: dtype));
 
 			if (temb_channels > 0)
 			{
-				this.emb_layers = Sequential(SiLU(), Linear(temb_channels, out_channels, device: device, dtype: dtype));
+				emb_layers = Sequential(SiLU(), Linear(temb_channels, out_channels, device: device, dtype: dtype));
 			}
 
-			this.out_layers = Sequential(GroupNorm(32, out_channels, device: device, dtype: dtype), SiLU(), Dropout(dropout), Conv2d(out_channels, out_channels, kernel_size: 3, stride: 1, padding: 1, device: device, dtype: dtype));
+			out_layers = Sequential(GroupNorm(32, out_channels, device: device, dtype: dtype), SiLU(), Dropout(dropout), Conv2d(out_channels, out_channels, kernel_size: 3, stride: 1, padding: 1, device: device, dtype: dtype));
 
 			if (this.in_channels != this.out_channels)
 			{
-				this.skip_connection = torch.nn.Conv2d(in_channels: in_channels, out_channels: this.out_channels, kernel_size: 1, stride: 1, device: device, dtype: dtype);
+				skip_connection = Conv2d(in_channels: in_channels, out_channels: this.out_channels, kernel_size: 1, stride: 1, device: device, dtype: dtype);
 			}
 			else
 			{
-				this.skip_connection = Identity();
+				skip_connection = Identity();
 			}
 
 			RegisterComponents();
@@ -97,14 +97,14 @@ namespace StableDiffusionSharp
 
 				if (time is not null)
 				{
-					time = this.emb_layers.forward(time);
+					time = emb_layers.forward(time);
 					hidden = hidden + time.unsqueeze(-1).unsqueeze(-1);
 				}
 
 				hidden = out_layers.forward(hidden);
-				if (this.in_channels != this.out_channels)
+				if (in_channels != out_channels)
 				{
-					x = this.skip_connection.forward(x);
+					x = skip_connection.forward(x);
 				}
 				return (x + hidden).MoveToOuterDisposeScope();
 			}
@@ -122,12 +122,12 @@ namespace StableDiffusionSharp
 
 		public TransformerBlock(int channels, int n_cross, int n_head, Device? device = null, ScalarType? dtype = null) : base(nameof(TransformerBlock))
 		{
-			this.norm1 = LayerNorm(channels, device: device, dtype: dtype);
-			this.attn1 = new CrossAttention(channels, channels, n_head, device: device, dtype: dtype);
-			this.norm2 = LayerNorm(channels, device: device, dtype: dtype);
-			this.attn2 = new CrossAttention(channels, n_cross, n_head, device: device, dtype: dtype);
-			this.norm3 = LayerNorm(channels, device: device, dtype: dtype);
-			this.ff = new FeedForward(channels, glu: true, device: device, dtype: dtype);
+			norm1 = LayerNorm(channels, device: device, dtype: dtype);
+			attn1 = new CrossAttention(channels, channels, n_head, device: device, dtype: dtype);
+			norm2 = LayerNorm(channels, device: device, dtype: dtype);
+			attn2 = new CrossAttention(channels, n_cross, n_head, device: device, dtype: dtype);
+			norm3 = LayerNorm(channels, device: device, dtype: dtype);
+			ff = new FeedForward(channels, glu: true, device: device, dtype: dtype);
 			RegisterComponents();
 		}
 		public override Tensor forward(Tensor x, Tensor context)
@@ -158,11 +158,11 @@ namespace StableDiffusionSharp
 
 		public SpatialTransformer(int channels, int n_cross, int n_head, int num_atten_blocks, float drop_out = 0.0f, bool use_linear = false, Device? device = null, ScalarType? dtype = null) : base(nameof(SpatialTransformer))
 		{
-			this.norm = Normalize(channels, device: device, dtype: dtype);
+			norm = Normalize(channels, device: device, dtype: dtype);
 			this.use_linear = use_linear;
-			this.proj_in = use_linear ? Linear(channels, channels, device: device, dtype: dtype) : Conv2d(channels, channels, kernel_size: 1, device: device, dtype: dtype);
-			this.proj_out = use_linear ? Linear(channels, channels, device: device, dtype: dtype) : Conv2d(channels, channels, kernel_size: 1, device: device, dtype: dtype);
-			this.transformer_blocks = new ModuleList<Module<Tensor, Tensor, Tensor>>();
+			proj_in = use_linear ? Linear(channels, channels, device: device, dtype: dtype) : Conv2d(channels, channels, kernel_size: 1, device: device, dtype: dtype);
+			proj_out = use_linear ? Linear(channels, channels, device: device, dtype: dtype) : Conv2d(channels, channels, kernel_size: 1, device: device, dtype: dtype);
+			transformer_blocks = new ModuleList<Module<Tensor, Tensor, Tensor>>();
 			for (int i = 0; i < num_atten_blocks; i++)
 			{
 				transformer_blocks.Add(new TransformerBlock(channels, n_cross, n_head, device: device, dtype: dtype));
@@ -184,7 +184,7 @@ namespace StableDiffusionSharp
 
 				if (!use_linear)
 				{
-					x = this.proj_in.forward(x);
+					x = proj_in.forward(x);
 				}
 
 				x = x.view([n, c, h * w]);
@@ -192,7 +192,7 @@ namespace StableDiffusionSharp
 
 				if (use_linear)
 				{
-					x = this.proj_in.forward(x);
+					x = proj_in.forward(x);
 				}
 
 				foreach (Module<Tensor, Tensor, Tensor> layer in transformer_blocks)
@@ -202,13 +202,13 @@ namespace StableDiffusionSharp
 
 				if (use_linear)
 				{
-					x = this.proj_out.forward(x);
+					x = proj_out.forward(x);
 				}
 				x = x.transpose(-1, -2);
 				x = x.view([n, c, h, w]);
 				if (!use_linear)
 				{
-					x = this.proj_out.forward(x);
+					x = proj_out.forward(x);
 				}
 
 				residue_short = residue_short + x;
@@ -218,7 +218,7 @@ namespace StableDiffusionSharp
 
 		private static GroupNorm Normalize(int in_channels, int num_groups = 32, float eps = 1e-6f, bool affine = true, Device? device = null, ScalarType? dtype = null)
 		{
-			return torch.nn.GroupNorm(num_groups: 32, num_channels: in_channels, eps: eps, affine: affine, device: device, dtype: dtype);
+			return GroupNorm(num_groups: 32, num_channels: in_channels, eps: eps, affine: affine, device: device, dtype: dtype);
 		}
 
 	}
@@ -232,16 +232,16 @@ namespace StableDiffusionSharp
 			this.with_conv = with_conv;
 			if (with_conv)
 			{
-				this.conv = Conv2d(in_channels, in_channels, kernel_size: 3, padding: 1, device: device, dtype: dtype);
+				conv = Conv2d(in_channels, in_channels, kernel_size: 3, padding: 1, device: device, dtype: dtype);
 			}
 			RegisterComponents();
 		}
 		public override Tensor forward(Tensor x)
 		{
-			var output = torch.nn.functional.interpolate(x, scale_factor: [2.0, 2.0], mode: InterpolationMode.Nearest);
-			if (this.with_conv && this.conv is not null)
+			var output = functional.interpolate(x, scale_factor: [2.0, 2.0], mode: InterpolationMode.Nearest);
+			if (with_conv && conv is not null)
 			{
-				output = this.conv.forward(output);
+				output = conv.forward(output);
 			}
 			return output;
 		}
@@ -257,24 +257,24 @@ namespace StableDiffusionSharp
 		}
 		public override Tensor forward(Tensor x)
 		{
-			x = this.op.forward(x);
+			x = op.forward(x);
 			return x;
 		}
 	}
 
 	internal class TimestepEmbedSequential : Sequential<Tensor, Tensor, Tensor, Tensor>
 	{
-		internal TimestepEmbedSequential(params (string name, torch.nn.Module)[] modules) : base(modules)
+		internal TimestepEmbedSequential(params (string name, Module)[] modules) : base(modules)
 		{
 			RegisterComponents();
 		}
 
-		internal TimestepEmbedSequential(params torch.nn.Module[] modules) : base(modules)
+		internal TimestepEmbedSequential(params Module[] modules) : base(modules)
 		{
 			RegisterComponents();
 		}
 
-		public override torch.Tensor forward(torch.Tensor x, torch.Tensor context, torch.Tensor time)
+		public override Tensor forward(Tensor x, Tensor context, Tensor time)
 		{
 			using (NewDisposeScope())
 			{
@@ -303,7 +303,7 @@ namespace StableDiffusionSharp
 		private readonly Linear proj;
 		public GEGLU(int dim_in, int dim_out, Device? device = null, ScalarType? dtype = null) : base(nameof(GEGLU))
 		{
-			this.proj = nn.Linear(dim_in, dim_out * 2, device: device, dtype: dtype);
+			proj = Linear(dim_in, dim_out * 2, device: device, dtype: dtype);
 			RegisterComponents();
 		}
 
@@ -311,10 +311,10 @@ namespace StableDiffusionSharp
 		{
 			using (NewDisposeScope())
 			{
-				Tensor[] result = this.proj.forward(x).chunk(2, dim: -1);
+				Tensor[] result = proj.forward(x).chunk(2, dim: -1);
 				x = result[0];
 				Tensor gate = result[1];
-				return (x * torch.nn.functional.gelu(gate)).MoveToOuterDisposeScope();
+				return (x * functional.gelu(gate)).MoveToOuterDisposeScope();
 			}
 		}
 	}
@@ -328,17 +328,17 @@ namespace StableDiffusionSharp
 			int inner_dim = dim * mult;
 			int dim_ot = dim_out ?? dim;
 			Module<Tensor, Tensor> project_in = glu ? new GEGLU(dim, inner_dim, device: device, dtype: dtype) : Sequential(nn.Linear(dim, inner_dim, device: device, dtype: dtype), nn.GELU());
-			this.net = Sequential(project_in, nn.Dropout(dropout), nn.Linear(inner_dim, dim_ot, device: device, dtype: dtype));
+			net = Sequential(project_in, Dropout(dropout), Linear(inner_dim, dim_ot, device: device, dtype: dtype));
 			RegisterComponents();
 		}
 
 		public override Tensor forward(Tensor input)
 		{
-			return this.net.forward(input);
+			return net.forward(input);
 		}
 	}
 
-	internal class SDUnet : Module<Tensor, Tensor, Tensor, Tensor>
+	internal class SDUnet : Module<Tensor, Tensor, Tensor, Tensor, Tensor>
 	{
 		private class UNet : Module<Tensor, Tensor, Tensor, Tensor>
 		{
@@ -358,8 +358,8 @@ namespace StableDiffusionSharp
 				bool mask = false;
 				channel_mult = channel_mult ?? [1, 2, 4, 4];
 
-				this.ch = model_channels;
-				this.time_embed_dim = model_channels * 4;
+				ch = model_channels;
+				time_embed_dim = model_channels * 4;
 				this.in_channels = in_channels;
 				this.use_timestep = use_timestep;
 
@@ -368,12 +368,12 @@ namespace StableDiffusionSharp
 				if (use_timestep)
 				{
 					// timestep embedding
-					this.time_embed = Sequential([torch.nn.Linear(model_channels, time_embed_dim, device: device, dtype: dtype), SiLU(), torch.nn.Linear(time_embed_dim, time_embed_dim, device: device, dtype: dtype)]);
+					time_embed = Sequential([Linear(model_channels, time_embed_dim, device: device, dtype: dtype), SiLU(), Linear(time_embed_dim, time_embed_dim, device: device, dtype: dtype)]);
 				}
 
 				// downsampling
-				this.input_blocks = new ModuleList<TimestepEmbedSequential>();
-				input_blocks.Add(new TimestepEmbedSequential(Conv2d(in_channels, this.ch, kernel_size: 3, padding: 1, device: device, dtype: dtype)));
+				input_blocks = new ModuleList<TimestepEmbedSequential>();
+				input_blocks.Add(new TimestepEmbedSequential(Conv2d(in_channels, ch, kernel_size: 3, padding: 1, device: device, dtype: dtype)));
 
 				for (int i = 0; i < channel_mult.Length; i++)
 				{
@@ -382,7 +382,7 @@ namespace StableDiffusionSharp
 
 					for (int j = 0; j < num_res_blocks; j++)
 					{
-						input_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(in_ch, out_ch, dropout, time_embed_dim, device: device, dtype: dtype), (i < channel_mult.Length - 1) ? new SpatialTransformer(out_ch, context_dim, num_heads, num_atten_blocks, dropout, device: device, dtype: dtype) : Identity()));
+						input_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(in_ch, out_ch, dropout, time_embed_dim, device: device, dtype: dtype), i < channel_mult.Length - 1 ? new SpatialTransformer(out_ch, context_dim, num_heads, num_atten_blocks, dropout, device: device, dtype: dtype) : Identity()));
 						input_block_channels.Add(in_ch);
 						in_ch = out_ch;
 					}
@@ -399,7 +399,7 @@ namespace StableDiffusionSharp
 				// upsampling
 				var reversed_mult = channel_mult.Reverse().ToList();
 				int prev_channels = time_embed_dim;
-				this.output_blocks = new ModuleList<TimestepEmbedSequential>();
+				output_blocks = new ModuleList<TimestepEmbedSequential>();
 				for (int i = 0; i < reversed_mult.Count; i++)
 				{
 					int mult = reversed_mult[i];
@@ -425,13 +425,13 @@ namespace StableDiffusionSharp
 							output_blocks.Add(new TimestepEmbedSequential(
 								new ResnetBlock(input_channels, current_channels, dropout, time_embed_dim, device: device, dtype: dtype),
 								new SpatialTransformer(current_channels, context_dim, num_heads, num_atten_blocks, dropout, device: device, dtype: dtype),
-								(has_upsample ? new Upsample(current_channels, device: device, dtype: dtype) : Identity())));
+								has_upsample ? new Upsample(current_channels, device: device, dtype: dtype) : Identity()));
 						}
 						else
 						{
 							output_blocks.Add(new TimestepEmbedSequential(
 								new ResnetBlock(input_channels, current_channels, dropout, time_embed_dim, device: device, dtype: dtype),
-								(has_upsample ? new Upsample(current_channels, device: device, dtype: dtype) : Identity())));
+								has_upsample ? new Upsample(current_channels, device: device, dtype: dtype) : Identity()));
 						}
 
 						prev_channels = current_channels;
@@ -459,7 +459,7 @@ namespace StableDiffusionSharp
 					foreach (TimestepEmbedSequential layers in output_blocks)
 					{
 						Tensor index = skip_connections.Last();
-						x = torch.cat([x, index], 1);
+						x = cat([x, index], 1);
 						skip_connections.RemoveAt(skip_connections.Count - 1);
 						x = layers.forward(x, context, time);
 					}
@@ -494,7 +494,7 @@ namespace StableDiffusionSharp
 			RegisterComponents();
 		}
 
-		public override Tensor forward(Tensor latent, Tensor context, Tensor time)
+		public override Tensor forward(Tensor latent, Tensor context, Tensor time, Tensor y)
 		{
 			Device device = model.parameters().First().device;
 			ScalarType dtype = model.parameters().First().dtype;
@@ -527,8 +527,8 @@ namespace StableDiffusionSharp
 			{
 				channel_mult = channel_mult ?? [1, 2, 4];
 
-				this.ch = model_channels;
-				this.time_embed_dim = model_channels * 4;
+				ch = model_channels;
+				time_embed_dim = model_channels * 4;
 				this.in_channels = in_channels;
 				this.use_timestep = use_timestep;
 
@@ -545,8 +545,8 @@ namespace StableDiffusionSharp
 				}
 
 				// downsampling
-				this.input_blocks = new ModuleList<TimestepEmbedSequential>();
-				input_blocks.Add(new TimestepEmbedSequential(Conv2d(in_channels, this.ch, kernel_size: 3, padding: 1, device: device, dtype: dtype)));
+				input_blocks = new ModuleList<TimestepEmbedSequential>();
+				input_blocks.Add(new TimestepEmbedSequential(Conv2d(in_channels, ch, kernel_size: 3, padding: 1, device: device, dtype: dtype)));
 
 				input_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(320, 320, device: device, dtype: dtype)));
 				input_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(320, 320, device: device, dtype: dtype)));
@@ -560,10 +560,10 @@ namespace StableDiffusionSharp
 				input_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(1280, 1280, device: device, dtype: dtype), new SpatialTransformer(1280, 2048, num_heads, 10, 0, useLinear, device: device, dtype: dtype)));
 
 				// mid_block
-				middle_block = (new TimestepEmbedSequential(new ResnetBlock(1280, 1280, device: device, dtype: dtype), new SpatialTransformer(1280, 2048, num_heads, 10, 0, useLinear, device: device, dtype: dtype), new ResnetBlock(1280, 1280, device: device, dtype: dtype)));
+				middle_block = new TimestepEmbedSequential(new ResnetBlock(1280, 1280, device: device, dtype: dtype), new SpatialTransformer(1280, 2048, num_heads, 10, 0, useLinear, device: device, dtype: dtype), new ResnetBlock(1280, 1280, device: device, dtype: dtype));
 
 				// upsampling
-				this.output_blocks = new ModuleList<TimestepEmbedSequential>();
+				output_blocks = new ModuleList<TimestepEmbedSequential>();
 				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(2560, 1280, device: device, dtype: dtype), new SpatialTransformer(1280, 2048, num_heads, 10, 0, useLinear, device: device, dtype: dtype)));
 				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(2560, 1280, device: device, dtype: dtype), new SpatialTransformer(1280, 2048, num_heads, 10, 0, useLinear, device: device, dtype: dtype)));
 				output_blocks.Add(new TimestepEmbedSequential(new ResnetBlock(1920, 1280, device: device, dtype: dtype), new SpatialTransformer(1280, 2048, num_heads, 10, 0, useLinear, device: device, dtype: dtype), new Upsample(1280, device: device, dtype: dtype)));
@@ -599,7 +599,7 @@ namespace StableDiffusionSharp
 					foreach (TimestepEmbedSequential layers in output_blocks)
 					{
 						Tensor index = skip_connections.Last();
-						x = torch.cat([x, index], 1);
+						x = cat([x, index], 1);
 						skip_connections.RemoveAt(skip_connections.Count - 1);
 						x = layers.forward(x, context, embed);
 					}

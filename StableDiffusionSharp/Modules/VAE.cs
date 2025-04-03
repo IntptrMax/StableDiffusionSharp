@@ -3,13 +3,13 @@ using TorchSharp.Modules;
 using static TorchSharp.torch;
 using static TorchSharp.torch.nn;
 
-namespace StableDiffusionSharp
+namespace StableDiffusionSharp.Modules
 {
 	internal class VAE
 	{
 		private static GroupNorm Normalize(int in_channels, int num_groups = 32, float eps = 1e-6f, bool affine = true, Device? device = null, ScalarType? dtype = null)
 		{
-			return torch.nn.GroupNorm(num_groups: num_groups, num_channels: in_channels, eps: eps, affine: affine, device: device, dtype: dtype);
+			return GroupNorm(num_groups: num_groups, num_channels: in_channels, eps: eps, affine: affine, device: device, dtype: dtype);
 		}
 
 		private class ResnetBlock : Module<Tensor, Tensor>
@@ -27,36 +27,36 @@ namespace StableDiffusionSharp
 			{
 				this.in_channels = in_channels;
 				this.out_channels = out_channels;
-				this.norm1 = Normalize(in_channels, device: device, dtype: dtype);
-				this.conv1 = torch.nn.Conv2d(in_channels, out_channels, kernel_size: 3, stride: 1, padding: 1, device: device, dtype: dtype);
-				this.norm2 = Normalize(out_channels, device: device, dtype: dtype);
-				this.conv2 = torch.nn.Conv2d(out_channels, out_channels, kernel_size: 3, stride: 1, padding: 1, device: device, dtype: dtype);
+				norm1 = Normalize(in_channels, device: device, dtype: dtype);
+				conv1 = Conv2d(in_channels, out_channels, kernel_size: 3, stride: 1, padding: 1, device: device, dtype: dtype);
+				norm2 = Normalize(out_channels, device: device, dtype: dtype);
+				conv2 = Conv2d(out_channels, out_channels, kernel_size: 3, stride: 1, padding: 1, device: device, dtype: dtype);
 
 				if (this.in_channels != this.out_channels)
 				{
-					this.nin_shortcut = torch.nn.Conv2d(in_channels: in_channels, out_channels: out_channels, kernel_size: 1, device: device, dtype: dtype);
+					nin_shortcut = Conv2d(in_channels: in_channels, out_channels: out_channels, kernel_size: 1, device: device, dtype: dtype);
 				}
 				else
 				{
-					this.nin_shortcut = torch.nn.Identity();
+					nin_shortcut = Identity();
 				}
 
-				this.swish = torch.nn.SiLU(inplace: true);
+				swish = SiLU(inplace: true);
 				RegisterComponents();
 			}
 
 			public override Tensor forward(Tensor x)
 			{
 				Tensor hidden = x;
-				hidden = this.norm1.forward(hidden);
-				hidden = this.swish.forward(hidden);
-				hidden = this.conv1.forward(hidden);
-				hidden = this.norm2.forward(hidden);
-				hidden = this.swish.forward(hidden);
-				hidden = this.conv2.forward(hidden);
-				if (this.in_channels != this.out_channels)
+				hidden = norm1.forward(hidden);
+				hidden = swish.forward(hidden);
+				hidden = conv1.forward(hidden);
+				hidden = norm2.forward(hidden);
+				hidden = swish.forward(hidden);
+				hidden = conv2.forward(hidden);
+				if (in_channels != out_channels)
 				{
-					x = this.nin_shortcut.forward(x);
+					x = nin_shortcut.forward(x);
 				}
 				return x + hidden;
 			}
@@ -72,11 +72,11 @@ namespace StableDiffusionSharp
 
 			public AttnBlock(int in_channels, Device? device = null, ScalarType? dtype = null) : base(nameof(AttnBlock))
 			{
-				this.norm = Normalize(in_channels, device: device, dtype: dtype);
-				this.q = Conv2d(in_channels, in_channels, kernel_size: 1, device: device, dtype: dtype);
-				this.k = Conv2d(in_channels, in_channels, kernel_size: 1, device: device, dtype: dtype);
-				this.v = Conv2d(in_channels, in_channels, kernel_size: 1, device: device, dtype: dtype);
-				this.proj_out = Conv2d(in_channels, in_channels, kernel_size: 1, device: device, dtype: dtype);
+				norm = Normalize(in_channels, device: device, dtype: dtype);
+				q = Conv2d(in_channels, in_channels, kernel_size: 1, device: device, dtype: dtype);
+				k = Conv2d(in_channels, in_channels, kernel_size: 1, device: device, dtype: dtype);
+				v = Conv2d(in_channels, in_channels, kernel_size: 1, device: device, dtype: dtype);
+				proj_out = Conv2d(in_channels, in_channels, kernel_size: 1, device: device, dtype: dtype);
 				RegisterComponents();
 			}
 
@@ -116,7 +116,7 @@ namespace StableDiffusionSharp
 				this.with_conv = with_conv;
 				if (with_conv)
 				{
-					this.conv = Conv2d(in_channels, in_channels, kernel_size: 3, stride: 2, device: device, dtype: dtype);
+					conv = Conv2d(in_channels, in_channels, kernel_size: 3, stride: 2, device: device, dtype: dtype);
 
 				}
 				RegisterComponents();
@@ -124,15 +124,15 @@ namespace StableDiffusionSharp
 
 			public override Tensor forward(Tensor x)
 			{
-				if (this.with_conv && this.conv != null)
+				if (with_conv && conv != null)
 				{
 					long[] pad = [0, 1, 0, 1];
 					x = functional.pad(x, pad, mode: PaddingModes.Constant, value: 0);
-					x = this.conv.forward(x);
+					x = conv.forward(x);
 				}
 				else
 				{
-					x = torch.nn.functional.avg_pool2d(x, kernel_size: 2, stride: 2);
+					x = functional.avg_pool2d(x, kernel_size: 2, stride: 2);
 				}
 				return x;
 			}
@@ -147,16 +147,16 @@ namespace StableDiffusionSharp
 				this.with_conv = with_conv;
 				if (with_conv)
 				{
-					this.conv = Conv2d(in_channels, in_channels, kernel_size: 3, padding: 1, device: device, dtype: dtype);
+					conv = Conv2d(in_channels, in_channels, kernel_size: 3, padding: 1, device: device, dtype: dtype);
 				}
 				RegisterComponents();
 			}
 			public override Tensor forward(Tensor x)
 			{
-				var output = torch.nn.functional.interpolate(x, scale_factor: [2.0, 2.0], mode: InterpolationMode.Nearest);
-				if (this.with_conv && this.conv != null)
+				var output = functional.interpolate(x, scale_factor: [2.0, 2.0], mode: InterpolationMode.Nearest);
+				if (with_conv && conv != null)
 				{
-					output = this.conv.forward(output);
+					output = conv.forward(output);
 				}
 				return output;
 			}
@@ -181,7 +181,7 @@ namespace StableDiffusionSharp
 			{
 				this.double_z = double_z;
 				ch_mult ??= [1, 2, 4, 4];
-				this.num_resolutions = ch_mult.Length;
+				num_resolutions = ch_mult.Length;
 				this.num_res_blocks = num_res_blocks;
 
 				// Input convolution
@@ -189,7 +189,7 @@ namespace StableDiffusionSharp
 
 				// Downsampling layers
 				in_ch_mult = [1, .. ch_mult];
-				this.down = Sequential();
+				down = Sequential();
 
 				block_in = ch * in_ch_mult[0];
 
@@ -213,11 +213,11 @@ namespace StableDiffusionSharp
 					{
 						d.append("downsample", new Downsample(block_in, device: device, dtype: dtype));
 					}
-					this.down.append(d);
+					down.append(d);
 				}
 
 				// Middle layers
-				this.mid = Sequential(
+				mid = Sequential(
 					("block_1", new ResnetBlock(block_in, block_in, device: device, dtype: dtype)),
 					("attn_1", new AttnBlock(block_in, device: device, dtype: dtype)),
 					("block_2", new ResnetBlock(block_in, block_in, device: device, dtype: dtype)));
@@ -268,26 +268,26 @@ namespace StableDiffusionSharp
 			public VAEDecoder(int ch = 128, int out_ch = 3, int[]? ch_mult = null, int num_res_blocks = 2, int resolution = 256, int z_channels = 16, Device? device = null, ScalarType? dtype = null) : base(nameof(VAEDecoder))
 			{
 				ch_mult ??= [1, 2, 4, 4];
-				this.num_resolutions = ch_mult.Length;
+				num_resolutions = ch_mult.Length;
 				this.num_res_blocks = num_res_blocks;
-				int block_in = ch * ch_mult[this.num_resolutions - 1];
+				int block_in = ch * ch_mult[num_resolutions - 1];
 
 				int curr_res = resolution / (int)Math.Pow(2, num_resolutions - 1);
 				// z to block_in
-				this.conv_in = Conv2d(z_channels, block_in, kernel_size: 3, padding: 1, device: device, dtype: dtype);
+				conv_in = Conv2d(z_channels, block_in, kernel_size: 3, padding: 1, device: device, dtype: dtype);
 
 				// middle
-				this.mid = Sequential(
+				mid = Sequential(
 					("block_1", new ResnetBlock(block_in, block_in, device: device, dtype: dtype)),
 					("attn_1", new AttnBlock(block_in, device: device, dtype: dtype)),
 					("block_2", new ResnetBlock(block_in, block_in, device: device, dtype: dtype))
 					);
 
 				// upsampling
-				this.up = Sequential();
+				up = Sequential();
 
 				List<Sequential> list = new List<Sequential>();
-				for (int i_level = this.num_resolutions - 1; i_level >= 0; i_level--)
+				for (int i_level = num_resolutions - 1; i_level >= 0; i_level--)
 				{
 					var block = Sequential();
 
@@ -310,22 +310,22 @@ namespace StableDiffusionSharp
 					list.Insert(0, u);
 				}
 
-				this.up = Sequential(list);
+				up = Sequential(list);
 
 				// end
-				this.norm_out = Normalize(block_in, device: device, dtype: dtype);
-				this.conv_out = torch.nn.Conv2d(block_in, out_ch, kernel_size: 3, stride: 1, padding: 1, device: device, dtype: dtype);
-				this.swish = GELU(inplace: true);
+				norm_out = Normalize(block_in, device: device, dtype: dtype);
+				conv_out = Conv2d(block_in, out_ch, kernel_size: 3, stride: 1, padding: 1, device: device, dtype: dtype);
+				swish = GELU(inplace: true);
 				RegisterComponents();
 			}
 
 			public override Tensor forward(Tensor z)
 			{
 				// z to block_in
-				Tensor hidden = this.conv_in.forward(z);
+				Tensor hidden = conv_in.forward(z);
 
 				// middle
-				hidden = this.mid.forward(hidden);
+				hidden = mid.forward(hidden);
 
 				// upsampling
 				foreach (Module<Tensor, Tensor> md in up.children().Reverse())
@@ -334,9 +334,9 @@ namespace StableDiffusionSharp
 				}
 
 				// end
-				hidden = this.norm_out.forward(hidden);
-				hidden = this.swish.forward(hidden);
-				hidden = this.conv_out.forward(hidden);
+				hidden = norm_out.forward(hidden);
+				hidden = swish.forward(hidden);
+				hidden = conv_out.forward(hidden);
 				return hidden;
 			}
 		}
@@ -381,7 +381,7 @@ namespace StableDiffusionSharp
 
 		private static long GetVideoCardMemory()
 		{
-			if (!torch.cuda.is_available())
+			if (!cuda.is_available())
 			{
 				return 0;
 			}

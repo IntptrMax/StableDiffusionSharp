@@ -4,7 +4,7 @@ using TorchSharp.Modules;
 using static TorchSharp.torch;
 using static TorchSharp.torch.nn;
 
-namespace StableDiffusionSharp
+namespace StableDiffusionSharp.Modules
 {
 	public class Esrgan : IDisposable
 	{
@@ -39,12 +39,12 @@ namespace StableDiffusionSharp
 			/// <param name="num_grow_ch">Channels for each growth.</param>
 			public ResidualDenseBlock(int num_feat = 64, int num_grow_ch = 32, Device? device = null, ScalarType? dtype = null) : base(nameof(ResidualDenseBlock))
 			{
-				this.conv1 = nn.Conv2d(num_feat, num_grow_ch, 3, 1, 1, device: device, dtype: dtype);
-				this.conv2 = nn.Conv2d(num_feat + num_grow_ch, num_grow_ch, 3, 1, 1, device: device, dtype: dtype);
-				this.conv3 = nn.Conv2d(num_feat + 2 * num_grow_ch, num_grow_ch, 3, 1, 1, device: device, dtype: dtype);
-				this.conv4 = nn.Conv2d(num_feat + 3 * num_grow_ch, num_grow_ch, 3, 1, 1, device: device, dtype: dtype);
-				this.conv5 = nn.Conv2d(num_feat + 4 * num_grow_ch, num_feat, 3, 1, 1, device: device, dtype: dtype);
-				this.lrelu = nn.LeakyReLU(negative_slope: 0.2f, inplace: true);
+				conv1 = Conv2d(num_feat, num_grow_ch, 3, 1, 1, device: device, dtype: dtype);
+				conv2 = Conv2d(num_feat + num_grow_ch, num_grow_ch, 3, 1, 1, device: device, dtype: dtype);
+				conv3 = Conv2d(num_feat + 2 * num_grow_ch, num_grow_ch, 3, 1, 1, device: device, dtype: dtype);
+				conv4 = Conv2d(num_feat + 3 * num_grow_ch, num_grow_ch, 3, 1, 1, device: device, dtype: dtype);
+				conv5 = Conv2d(num_feat + 4 * num_grow_ch, num_feat, 3, 1, 1, device: device, dtype: dtype);
+				lrelu = LeakyReLU(negative_slope: 0.2f, inplace: true);
 				RegisterComponents();
 			}
 
@@ -52,11 +52,11 @@ namespace StableDiffusionSharp
 			{
 				using (NewDisposeScope())
 				{
-					Tensor x1 = this.lrelu.forward(this.conv1.forward(x));
-					Tensor x2 = this.lrelu.forward(this.conv2.forward(torch.cat([x, x1], 1)));
-					Tensor x3 = this.lrelu.forward(this.conv3.forward(torch.cat([x, x1, x2], 1)));
-					Tensor x4 = this.lrelu.forward(this.conv4.forward(torch.cat([x, x1, x2, x3], 1)));
-					Tensor x5 = this.conv5.forward(torch.cat([x, x1, x2, x3, x4], 1));
+					Tensor x1 = lrelu.forward(conv1.forward(x));
+					Tensor x2 = lrelu.forward(conv2.forward(cat([x, x1], 1)));
+					Tensor x3 = lrelu.forward(conv3.forward(cat([x, x1, x2], 1)));
+					Tensor x4 = lrelu.forward(conv4.forward(cat([x, x1, x2, x3], 1)));
+					Tensor x5 = conv5.forward(cat([x, x1, x2, x3, x4], 1));
 					// Empirically, we use 0.2 to scale the residual for better performance
 					return (x5 * 0.2 + x).MoveToOuterDisposeScope();
 				}
@@ -79,18 +79,18 @@ namespace StableDiffusionSharp
 			/// <param name="num_grow_ch">Channels for each growth.</param>
 			public RRDB(int num_feat, int num_grow_ch = 32, Device? device = null, ScalarType? dtype = null) : base(nameof(RRDB))
 			{
-				this.rdb1 = new ResidualDenseBlock(num_feat, num_grow_ch, device: device, dtype: dtype);
-				this.rdb2 = new ResidualDenseBlock(num_feat, num_grow_ch, device: device, dtype: dtype);
-				this.rdb3 = new ResidualDenseBlock(num_feat, num_grow_ch, device: device, dtype: dtype);
+				rdb1 = new ResidualDenseBlock(num_feat, num_grow_ch, device: device, dtype: dtype);
+				rdb2 = new ResidualDenseBlock(num_feat, num_grow_ch, device: device, dtype: dtype);
+				rdb3 = new ResidualDenseBlock(num_feat, num_grow_ch, device: device, dtype: dtype);
 				RegisterComponents();
 			}
 			public override Tensor forward(Tensor x)
 			{
 				using (NewDisposeScope())
 				{
-					Tensor @out = this.rdb1.forward(x);
-					@out = this.rdb2.forward(@out);
-					@out = this.rdb3.forward(@out);
+					Tensor @out = rdb1.forward(x);
+					@out = rdb2.forward(@out);
+					@out = rdb3.forward(@out);
 					// Empirically, we use 0.2 to scale the residual for better performance
 					return (@out * 0.2 + x).MoveToOuterDisposeScope();
 				}
@@ -120,19 +120,19 @@ namespace StableDiffusionSharp
 				{
 					num_in_ch = num_in_ch * 16;
 				}
-				this.conv_first = Conv2d(num_in_ch, num_feat, 3, 1, 1, device: device, dtype: dtype);
-				this.body = Sequential();
+				conv_first = Conv2d(num_in_ch, num_feat, 3, 1, 1, device: device, dtype: dtype);
+				body = Sequential();
 				for (int i = 0; i < num_block; i++)
 				{
 					body.append(new RRDB(num_feat: num_feat, num_grow_ch: num_grow_ch, device: device, dtype: dtype));
 				}
-				this.conv_body = Conv2d(num_feat, num_feat, 3, 1, 1, device: device, dtype: dtype);
+				conv_body = Conv2d(num_feat, num_feat, 3, 1, 1, device: device, dtype: dtype);
 				// upsample
-				this.conv_up1 = Conv2d(num_feat, num_feat, 3, 1, 1, device: device, dtype: dtype);
-				this.conv_up2 = Conv2d(num_feat, num_feat, 3, 1, 1, device: device, dtype: dtype);
-				this.conv_hr = Conv2d(num_feat, num_feat, 3, 1, 1, device: device, dtype: dtype);
-				this.conv_last = Conv2d(num_feat, num_out_ch, 3, 1, 1, device: device, dtype: dtype);
-				this.lrelu = LeakyReLU(negative_slope: 0.2f, inplace: true);
+				conv_up1 = Conv2d(num_feat, num_feat, 3, 1, 1, device: device, dtype: dtype);
+				conv_up2 = Conv2d(num_feat, num_feat, 3, 1, 1, device: device, dtype: dtype);
+				conv_hr = Conv2d(num_feat, num_feat, 3, 1, 1, device: device, dtype: dtype);
+				conv_last = Conv2d(num_feat, num_out_ch, 3, 1, 1, device: device, dtype: dtype);
+				lrelu = LeakyReLU(negative_slope: 0.2f, inplace: true);
 				RegisterComponents();
 			}
 
@@ -141,21 +141,21 @@ namespace StableDiffusionSharp
 				using (NewDisposeScope())
 				{
 					Tensor feat = x;
-					if (this.scale == 2)
+					if (scale == 2)
 					{
 						feat = pixel_unshuffle(x, scale: 2);
 					}
-					else if (this.scale == 1)
+					else if (scale == 1)
 					{
 						feat = pixel_unshuffle(x, scale: 4);
 					}
-					feat = this.conv_first.forward(feat);
-					Tensor body_feat = this.conv_body.forward(this.body.forward(feat));
+					feat = conv_first.forward(feat);
+					Tensor body_feat = conv_body.forward(body.forward(feat));
 					feat = feat + body_feat;
 					// upsample
-					feat = this.lrelu.forward(this.conv_up1.forward(torch.nn.functional.interpolate(feat, scale_factor: [2, 2], mode: InterpolationMode.Nearest)));
-					feat = this.lrelu.forward(this.conv_up2.forward(torch.nn.functional.interpolate(feat, scale_factor: [2, 2], mode: InterpolationMode.Nearest)));
-					Tensor @out = this.conv_last.forward(this.lrelu.forward(this.conv_hr.forward(feat)));
+					feat = lrelu.forward(conv_up1.forward(functional.interpolate(feat, scale_factor: [2, 2], mode: InterpolationMode.Nearest)));
+					feat = lrelu.forward(conv_up2.forward(functional.interpolate(feat, scale_factor: [2, 2], mode: InterpolationMode.Nearest)));
+					Tensor @out = conv_last.forward(lrelu.forward(conv_hr.forward(feat)));
 					return @out.MoveToOuterDisposeScope();
 				}
 			}
@@ -196,7 +196,7 @@ namespace StableDiffusionSharp
 
 		public ImageMagick.MagickImage UpScale(ImageMagick.MagickImage inputImg)
 		{
-			using (torch.no_grad())
+			using (no_grad())
 			{
 				Tensor tensor = Tools.GetTensorFromImage(inputImg);
 				tensor = tensor.unsqueeze(0) / 255.0;

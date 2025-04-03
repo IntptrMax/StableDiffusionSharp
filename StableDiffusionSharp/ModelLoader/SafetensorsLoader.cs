@@ -7,7 +7,7 @@ namespace StableDiffusionSharp.ModelLoader
 {
 	internal class SafetensorsLoader
 	{
-		private List<TensorInfo> ReadTensorsInfoFromFile(string inputFileName)
+		internal List<TensorInfo> ReadTensorsInfoFromFile(string inputFileName)
 		{
 			using (FileStream stream = File.OpenRead(inputFileName))
 			{
@@ -140,6 +140,5 @@ namespace StableDiffusionSharp.ModelLoader
 				return module;
 			}
 		}
-
 	}
 }

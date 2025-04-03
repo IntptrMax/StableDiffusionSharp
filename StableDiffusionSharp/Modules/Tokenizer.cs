@@ -3,7 +3,7 @@ using System.Reflection;
 using TorchSharp;
 using static TorchSharp.torch;
 
-namespace StableDiffusionSharp
+namespace StableDiffusionSharp.Modules
 {
 	internal class Tokenizer
 	{
@@ -71,7 +71,7 @@ namespace StableDiffusionSharp
 			var res = _tokenizer.EncodeToIds(text).ToList();
 			res.Insert(0, _startToken);
 			res.Add(_endToken);
-			return torch.tensor(res, ScalarType.Int64).unsqueeze(0);
+			return tensor(res, ScalarType.Int64).unsqueeze(0);
 		}
 	}
 }
