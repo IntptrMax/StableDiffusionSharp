@@ -4,26 +4,29 @@
 
 StableDiffusionSharp is an image generating software. With the help of torchsharp, stable diffusion can run without python.
 
-![无标题](https://github.com/user-attachments/assets/5c19e26e-52d3-45eb-aa15-ae27351dfabd)
+![Demo](./Assets/Demo.jpg)
 
 ## Features
 
 - Written in C# only.
 - Can load .safetensors or .ckpt model directly.
 - Cuda support.
-- Use SDPA for speed-up and save vram.
+- Use SDPA for speed-up and save vram in fp16.
 - Text2Image support.
+- Image2Image support.
 - SD1.5 support.
 - SDXL support.
-- Image2Image support.
+- VAEApprox support.
 - Esrgan 4x support.
-- Nuget package.
+- Nuget package support.
 
 For SD1.5 Text to Image, it cost about 3G VRAM and 2.4 seconds for Generating a 512*512 image in 20 step.
 
 ## Work to do
 
 - Lora support.
+- ControlNet support.
+- Inpaint support.
 - Tiled VAE.
 
 ## How to use
@@ -41,30 +44,53 @@ If you want to use esrgan for upscaling, you have to download model from [RealES
 
 Now you can use it like the code below.
 
-    string modelPath = @".\sunshinemix.safetensors";
-    string sdxlModelPath = @".\juggernautXL.safetensors";
-    string esrganModelPath = @".\RealESRGAN_x4plus.pth";
-    string prompt = "High quality, best quality, sunset on sea, beach, tree.";
-    string nprompt = "Bad quality, worst quality.";
-    string i2iPrompt = "High quality, best quality, moon, grass, tree, boat.";
+    static void Main(string[] args)
+    {
+        string sdModelPath = @".\Chilloutmix.safetensors";
+        string vaeModelPath = @".\vae.safetensors";
 
-    SDXL sdxl = new SDXL(deviceType, scalarType);
-	sdxl.LoadModel(sdxlModelPath);
-	ImageMagick.MagickImage sdxlT2Image = sdxl.TextToImage(prompt, nprompt);
-	sdxlT2Image.Write("output_sdxl_t2i.png");
+        string esrganModelPath = @".\RealESRGAN_x4plus.pth";
+        string i2iPrompt = "High quality, best quality, moon, grass, tree, boat.";
+        string prompt = "cat with blue eyes";
+        string nprompt = "";
 
-    StableDiffusion sd = new StableDiffusion();
-    sd.LoadModel(modelPath);
+        SDDeviceType deviceType = SDDeviceType.CUDA;
+        SDScalarType scalarType = SDScalarType.Float16;
+        SDSamplerType samplerType = SDSamplerType.EulerAncestral;
+        int step = 20;
+        float cfg = 7.0f;
+        long seed = 0;
+        long img2imgSubSeed = 0;
+        int width = 512;
+        int height = 512;
+        float strength = 0.75f;
+        long clipSkip = 2;
 
-    ImageMagick.MagickImage t2iImage = sd.TextToImage(prompt, nprompt);
-    t2iImage.Write("output_t2i.png");
+        StableDiffusion sd = new StableDiffusion(deviceType, scalarType);
+        sd.StepProgress += Sd_StepProgress;
+        Console.WriteLine("Loading model......");
+        sd.LoadModel(sdModelPath, vaeModelPath);
+        Console.WriteLine("Model loaded.");
 
-    ImageMagick.MagickImage i2iImage = sd.ImageToImage(t2iImage, i2iPrompt, nprompt);
-    i2iImage.Write("output_i2i.png");
+        ImageMagick.MagickImage t2iImage = sd.TextToImage(prompt, nprompt, clipSkip, width, height, step, seed, cfg, samplerType);
+        t2iImage.Write("output_t2i.png");
 
-    Esrgan esrgan = new Esrgan();
-    esrgan.LoadModel(esrganModelPath);
-    ImageMagick.MagickImage upscaleImg = esrgan.UpScale(t2iImage);
-    upscaleImg.Write("upscale.png");
+        ImageMagick.MagickImage i2iImage = sd.ImageToImage(t2iImage, i2iPrompt, nprompt, clipSkip, step, strength, seed, img2imgSubSeed, cfg, samplerType);
+        i2iImage.Write("output_i2i.png");
 
-    Console.WriteLine(@"Done. Images have been saved.");
+        sd.Dispose();
+        GC.Collect();
+
+        Console.WriteLine("Doing upscale......");
+        StableDiffusionSharp.Modules.Esrgan esrgan = new StableDiffusionSharp.Modules.Esrgan(deviceType: deviceType, scalarType: scalarType);
+        esrgan.LoadModel(esrganModelPath);
+        ImageMagick.MagickImage upscaleImg = esrgan.UpScale(t2iImage);
+        upscaleImg.Write("upscale.png");
+
+        Console.WriteLine(@"Done. Images have been saved.");
+    }
+
+    private static void Sd_StepProgress(object? sender, StableDiffusion.StepEventArgs e)
+    {
+        Console.WriteLine($"Progress: {e.CurrentStep}/{e.TotalSteps}");
+    }
