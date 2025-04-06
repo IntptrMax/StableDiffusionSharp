@@ -37,60 +37,64 @@ You can download the code or add it from nuget.
 
 Or use the code directly.
 
-> [!NOTE]Please add one of libtorch-cpu, libtorch-cuda-12.1, libtorch-cuda-12.1-win-x64 or libtorch-cuda-12.1-linux-x64 version 2.5.1.0 to execute.
+> [!NOTE]
+> Please add one of libtorch-cpu, libtorch-cuda-12.1, libtorch-cuda-12.1-win-x64 or libtorch-cuda-12.1-linux-x64 version 2.5.1.0 to execute.
 
-You have to download sd1.5 model first.
+You have to download sd model first. If you need a seperate vae, and you have to download it too. 
+
+
 If you want to use esrgan for upscaling, you have to download model from [RealESRGAN_x4plus.pth](https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth)
 
 Now you can use it like the code below.
 
-    static void Main(string[] args)
-    {
-        string sdModelPath = @".\Chilloutmix.safetensors";
-        string vaeModelPath = @".\vae.safetensors";
+``` C#
+static void Main(string[] args)
+{
+    string sdModelPath = @".\Chilloutmix.safetensors";
+    string vaeModelPath = @".\vae.safetensors";
 
-        string esrganModelPath = @".\RealESRGAN_x4plus.pth";
-        string i2iPrompt = "High quality, best quality, moon, grass, tree, boat.";
-        string prompt = "cat with blue eyes";
-        string nprompt = "";
+    string esrganModelPath = @".\RealESRGAN_x4plus.pth";
+    string i2iPrompt = "High quality, best quality, moon, grass, tree, boat.";
+    string prompt = "cat with blue eyes";
+    string nprompt = "";
 
-        SDDeviceType deviceType = SDDeviceType.CUDA;
-        SDScalarType scalarType = SDScalarType.Float16;
-        SDSamplerType samplerType = SDSamplerType.EulerAncestral;
-        int step = 20;
-        float cfg = 7.0f;
-        long seed = 0;
-        long img2imgSubSeed = 0;
-        int width = 512;
-        int height = 512;
-        float strength = 0.75f;
-        long clipSkip = 2;
+    SDDeviceType deviceType = SDDeviceType.CUDA;
+    SDScalarType scalarType = SDScalarType.Float16;
+    SDSamplerType samplerType = SDSamplerType.EulerAncestral;
+    int step = 20;
+    float cfg = 7.0f;
+    long seed = 0;
+    long img2imgSubSeed = 0;
+    int width = 512;
+    int height = 512;
+    float strength = 0.75f;
+    long clipSkip = 2;
 
-        StableDiffusion sd = new StableDiffusion(deviceType, scalarType);
-        sd.StepProgress += Sd_StepProgress;
-        Console.WriteLine("Loading model......");
-        sd.LoadModel(sdModelPath, vaeModelPath);
-        Console.WriteLine("Model loaded.");
+    StableDiffusion sd = new StableDiffusion(deviceType, scalarType);
+    sd.StepProgress += Sd_StepProgress;
+    Console.WriteLine("Loading model......");
+    sd.LoadModel(sdModelPath, vaeModelPath);
+    Console.WriteLine("Model loaded.");
 
-        ImageMagick.MagickImage t2iImage = sd.TextToImage(prompt, nprompt, clipSkip, width, height, step, seed, cfg, samplerType);
-        t2iImage.Write("output_t2i.png");
+    ImageMagick.MagickImage t2iImage = sd.TextToImage(prompt, nprompt, clipSkip, width, height, step, seed, cfg, samplerType);
+    t2iImage.Write("output_t2i.png");
 
-        ImageMagick.MagickImage i2iImage = sd.ImageToImage(t2iImage, i2iPrompt, nprompt, clipSkip, step, strength, seed, img2imgSubSeed, cfg, samplerType);
-        i2iImage.Write("output_i2i.png");
+    ImageMagick.MagickImage i2iImage = sd.ImageToImage(t2iImage, i2iPrompt, nprompt, clipSkip, step, strength, seed, img2imgSubSeed, cfg, samplerType);
+    i2iImage.Write("output_i2i.png");
 
-        sd.Dispose();
-        GC.Collect();
+    sd.Dispose();
+    GC.Collect();
 
-        Console.WriteLine("Doing upscale......");
-        StableDiffusionSharp.Modules.Esrgan esrgan = new StableDiffusionSharp.Modules.Esrgan(deviceType: deviceType, scalarType: scalarType);
-        esrgan.LoadModel(esrganModelPath);
-        ImageMagick.MagickImage upscaleImg = esrgan.UpScale(t2iImage);
-        upscaleImg.Write("upscale.png");
+    Console.WriteLine("Doing upscale......");
+    StableDiffusionSharp.Modules.Esrgan esrgan = new StableDiffusionSharp.Modules.Esrgan(deviceType: deviceType, scalarType: scalarType);
+    esrgan.LoadModel(esrganModelPath);
+    ImageMagick.MagickImage upscaleImg = esrgan.UpScale(t2iImage);
+    upscaleImg.Write("upscale.png");
 
-        Console.WriteLine(@"Done. Images have been saved.");
-    }
+    Console.WriteLine(@"Done. Images have been saved.");
+}
 
-    private static void Sd_StepProgress(object? sender, StableDiffusion.StepEventArgs e)
-    {
-        Console.WriteLine($"Progress: {e.CurrentStep}/{e.TotalSteps}");
-    }
+private static void Sd_StepProgress(object? sender, StableDiffusion.StepEventArgs e)
+{
+    Console.WriteLine($"Progress: {e.CurrentStep}/{e.TotalSteps}");
+}
