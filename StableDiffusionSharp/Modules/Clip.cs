@@ -264,8 +264,11 @@ namespace StableDiffusionSharp.Modules
 			private readonly LayerNorm ln_final;
 			private readonly Parameter text_projection;
 
+			private readonly long embed_dim;
+
 			public ViT_bigG_Clip(long n_vocab = 49408, long n_token = 77, long num_layers = 32, long n_heads = 20, long embed_dim = 1280, long intermediate_size = 1280 * 4, int adm_in_channels = 2816, Device? device = null, ScalarType? dtype = null) : base(nameof(ViT_bigG_Clip))
 			{
+				this.embed_dim = embed_dim;
 				token_embedding = Embedding(n_vocab, embed_dim, device: device, dtype: dtype);
 				positional_embedding = Parameter(zeros(size: [n_token, embed_dim], device: device, dtype: dtype));
 				text_projection = Parameter(zeros(size: [embed_dim, embed_dim], device: device, dtype: dtype));
@@ -277,21 +280,28 @@ namespace StableDiffusionSharp.Modules
 
 			public override Tensor forward(Tensor x, int num_skip, bool with_final_ln, bool return_pooled)
 			{
-				x = token_embedding.forward(x) + positional_embedding;
-				x = transformer.forward(x, num_skip);
-				if (with_final_ln || return_pooled)
+				using (NewDisposeScope())
 				{
-					x = ln_final.forward(x);
+					Tensor input_ids = x;
+					Tensor position_ids = torch.arange(0, 77, dtype: ScalarType.Int64, device: positional_embedding.device).unsqueeze(0);
+					Embedding position_embedding = Embedding(77, embed_dim, device: positional_embedding.device);
+					position_embedding.weight = positional_embedding;
+
+					x = token_embedding.forward(x) + position_embedding.forward(position_ids);
+					x = transformer.forward(x, num_skip);
+					if (with_final_ln || return_pooled)
+					{
+						x = ln_final.forward(x);
+					}
+					if (return_pooled)
+					{
+						x = x[torch.arange(x.shape[0], device: x.device), input_ids.to(type: ScalarType.Int32, device: x.device).argmax(dim: -1)];
+						x = functional.linear(x, text_projection.transpose(0, 1));
+						long padLength = adm_in_channels - x.shape[1];
+						x = functional.pad(x, [0, padLength, 0, 0]);
+					}
+					return x.MoveToOuterDisposeScope();
 				}
-				if (return_pooled)
-				{
-					x = x[.., 6, ..];
-					x = functional.linear(x, text_projection);
-					long padLength = adm_in_channels - x.shape[1];
-					x = functional.pad(x, [0, padLength, 0, 0]);
-					return x;
-				}
-				return x;
 			}
 
 			private class Transformer : Module<Tensor, int, Tensor>
@@ -517,8 +527,8 @@ namespace StableDiffusionSharp.Modules
 						Tensor token1 = functional.pad(token, [0, padLength, 0, 0], value: endToken);
 						Tensor token2 = functional.pad(token, [0, padLength, 0, 0]);
 
-						Tensor vit_l_result = ((ViT_L_Clip)embedders[0]).forward(token1, 2, false);
-						Tensor vit_bigG_result = ((Model)embedders[1]).forward(token2, 2, false, false);
+						Tensor vit_l_result = ((ViT_L_Clip)embedders[0]).forward(token1, 1, false);
+						Tensor vit_bigG_result = ((Model)embedders[1]).forward(token2, 1, false, false);
 						Tensor vit_bigG_vec = ((Model)embedders[1]).forward(token2, 0, false, true);
 						Tensor crossattn = cat([vit_l_result, vit_bigG_result], 2);
 						return (crossattn.MoveToOuterDisposeScope(), vit_bigG_vec.MoveToOuterDisposeScope());
