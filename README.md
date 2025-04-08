@@ -4,7 +4,7 @@
 
 StableDiffusionSharp is an image generating software. With the help of torchsharp, stable diffusion can run without python.
 
-![Demo](./Assets/Demo.jpg)
+![Demo](https://github.com/user-attachments/assets/6924f4fa-0c5b-495c-81a8-3bcaf9b7d6e6)
 
 ## Features
 
