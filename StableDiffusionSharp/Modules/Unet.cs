@@ -1,5 +1,8 @@
-﻿using TorchSharp;
+﻿using System;
+using TorchSharp;
 using TorchSharp.Modules;
+using static Tensorboard.CostGraphDef.Types;
+using static Tensorboard.TensorShapeProto.Types;
 using static TorchSharp.torch;
 using static TorchSharp.torch.nn;
 
@@ -585,8 +588,13 @@ namespace StableDiffusionSharp.Modules
 			{
 				using (NewDisposeScope())
 				{
+					int dim = 512;
 					Tensor embed = time_embed.forward(time);
-					Tensor label_embed = label_emb.forward(y);
+					Tensor time_ids = tensor(new float[] { dim, dim, 0, 0, dim, dim }, embed.dtype, embed.device).repeat([2, 1]);
+					Tensor time_embeds = get_timestep_embedding(time_ids.flatten(), dim / 2, true, 0, 1);
+					time_embeds = time_embeds.reshape([2, -1]);
+					y = cat([y, time_embeds], dim: -1);
+					Tensor label_embed = label_emb.forward(y.to(embed.dtype, embed.device));
 					embed = embed + label_embed;
 
 					List<Tensor> skip_connections = new List<Tensor>();
@@ -647,6 +655,51 @@ namespace StableDiffusionSharp.Modules
 
 			latent = model.forward(latent, context, time, y);
 			return latent;
+		}
+
+		/// <summary>
+		/// This matches the implementation in Denoising Diffusion Probabilistic Models: Create sinusoidal timestep embeddings.
+		/// </summary>
+		/// <param name="timesteps">a 1-D Tensor of N indices, one per batch element. These may be fractional.</param>
+		/// <param name="embedding_dim">the dimension of the output.</param>
+		/// <param name="flip_sin_to_cos">Whether the embedding order should be `cos, sin` (if True) or `sin, cos` (if False)</param>
+		/// <param name="downscale_freq_shiftt">Controls the delta between frequencies between dimensions</param>
+		/// <param name="scale">Scaling factor applied to the embeddings.</param>
+		/// <param name="max_period">Controls the maximum frequency of the embeddings</param>
+		/// <returns>torch.Tensor: an [N x dim] Tensor of positional embeddings.</returns>
+		private static Tensor get_timestep_embedding(Tensor timesteps, int embedding_dim, bool flip_sin_to_cos = false, float downscale_freq_shift = 1, float scale = 1, int max_period = 10000)
+		{
+			using (NewDisposeScope())
+			{
+				if (timesteps.Dimensions != 1)
+				{
+					throw new ArgumentOutOfRangeException("Timesteps should be a 1d-array");
+				}
+				int half_dim = embedding_dim / 2;
+				Tensor exponent = -Math.Log(max_period) * torch.arange(start: 0, stop: half_dim, dtype: torch.float32, device: timesteps.device);
+				exponent = exponent / (half_dim - downscale_freq_shift);
+				Tensor emb = torch.exp(exponent);
+				emb = timesteps[.., TensorIndex.None].@float() * emb[TensorIndex.None, ..];
+
+				// scale embeddings
+				emb = scale * emb;
+
+				// concat sine and cosine embeddings
+				emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim: -1);
+
+				// flip sine and cosine embeddings
+				if (flip_sin_to_cos)
+				{
+					emb = torch.cat([emb[.., half_dim..], emb[.., ..half_dim]], dim: -1);
+				}
+
+				// zero pad
+				if (embedding_dim % 2 == 1)
+				{
+					emb = torch.nn.functional.pad(emb, (0, 1, 0, 0));
+				}
+				return emb.MoveToOuterDisposeScope();
+			}
 		}
 
 	}

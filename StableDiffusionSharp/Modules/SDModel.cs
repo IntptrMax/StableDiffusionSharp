@@ -196,8 +196,7 @@ namespace StableDiffusionSharp.Modules
 				}
 
 				seed = seed == 0 ? Random.Shared.NextInt64() : seed;
-				Generator generator = manual_seed(seed);
-				set_rng_state(generator.get_state());
+				set_rng_state(manual_seed(seed).get_state());
 
 				width = width / 64 * 8;  // must be multiples of 64
 				height = height / 64 * 8; // must be multiples of 64
@@ -234,7 +233,7 @@ namespace StableDiffusionSharp.Modules
 					ImageMagick.MagickImage approxImg = Tools.GetImageFromTensor(approxTensor);
 					OnStepProgress(i + 1, steps, approxImg);
 					Tensor timestep = sampler.Timesteps[i];
-					Tensor time_embedding = GetTimeEmbedding(timestep).to(dtype, device);
+					Tensor time_embedding = GetTimeEmbedding(timestep);
 					Tensor input_latents = sampler.ScaleModelInput(latents, i);
 					input_latents = input_latents.repeat(2, 1, 1, 1);
 					Tensor output = diffusion.forward(input_latents, context, time_embedding, vector);

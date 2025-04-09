@@ -8,9 +8,11 @@ namespace StableDiffusionSharp.Sampler
 		public Tensor Sigmas;
 		internal Tensor Timesteps;
 		private Scheduler.DiscreteSchedule schedule;
+		private readonly TimestepSpacing timestepSpacing;
 
-		public BasicSampler(int num_train_timesteps = 1000, float beta_start = 0.00085f, float beta_end = 0.012f, int steps_offset = 1)
+		public BasicSampler(int num_train_timesteps = 1000, float beta_start = 0.00085f, float beta_end = 0.012f, int steps_offset = 1, TimestepSpacing timestepSpacing = TimestepSpacing.Leading)
 		{
+			this.timestepSpacing = timestepSpacing;
 			Tensor betas = GetBetaSchedule(beta_start, beta_end, num_train_timesteps);
 			Tensor alphas = 1.0f - betas;
 			Tensor alphas_cumprod = torch.cumprod(alphas, 0);
@@ -19,6 +21,10 @@ namespace StableDiffusionSharp.Sampler
 
 		public Tensor InitNoiseSigma()
 		{
+			if (timestepSpacing == TimestepSpacing.Linspace || timestepSpacing == TimestepSpacing.Trailing)
+			{
+				return Sigmas.max();
+			}
 			return torch.sqrt(torch.pow(Sigmas.max(), 2) + 1);
 		}
 
@@ -63,11 +69,31 @@ namespace StableDiffusionSharp.Sampler
 			{
 				throw new ArgumentException("num_inference_steps must be greater than 0");
 			}
-			long t_max = Sigmas.NumberOfElements - 1;
-			this.Timesteps = torch.linspace(t_max, 0, num_inference_steps);
+			//long t_max = Sigmas.NumberOfElements - 1;
+			//this.Timesteps = torch.linspace(t_max, 0, num_inference_steps);
+			this.Timesteps = GetTimeSteps(Sigmas.NumberOfElements, num_inference_steps, timestepSpacing);
 			schedule = new Scheduler.DiscreteSchedule(Sigmas);
 			this.Sigmas = append_zero(schedule.t_to_sigma(this.Timesteps));
 		}
+
+		private Tensor GetTimeSteps(double t_max, long num_steps, TimestepSpacing timestepSpacing)
+		{
+			if (timestepSpacing == TimestepSpacing.Linspace)
+			{
+				return torch.linspace(t_max - 1, 0, num_steps);
+			}
+			else if (timestepSpacing == TimestepSpacing.Leading)
+			{
+				long step_ratio = (long)t_max / num_steps;
+				return torch.linspace(t_max - step_ratio, 0, num_steps) + 1;
+			}
+			else
+			{
+				long step_ratio = (long)t_max / num_steps;
+				return torch.arange(t_max, 0, -step_ratio).round() - 1;
+			}
+		}
+
 
 		public virtual Tensor Step(Tensor model_output, int step_index, Tensor sample, long seed = 0, float s_churn = 0.0f, float s_tmin = 0.0f, float s_tmax = float.PositiveInfinity, float s_noise = 1.0f)
 		{

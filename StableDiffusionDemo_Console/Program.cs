@@ -4,11 +4,10 @@ namespace StableDiffusionDemo_Console
 {
 	internal class Program
 	{
-
 		static void Main(string[] args)
 		{
-			string sdModelPath = @".\Chilloutmix.safetensors";
-			string vaeModelPath = @".\vae.safetensors";
+			string sdModelPath = @".\tPonynai3V4.safetensors";
+			string vaeModelPath = @".\sdxl.vae.safetensors";
 
 			string esrganModelPath = @".\RealESRGAN_x4plus.pth";
 			string i2iPrompt = "High quality, best quality, moon, grass, tree, boat.";
@@ -17,7 +16,7 @@ namespace StableDiffusionDemo_Console
 
 			SDDeviceType deviceType = SDDeviceType.CUDA;
 			SDScalarType scalarType = SDScalarType.Float16;
-			SDSamplerType samplerType = SDSamplerType.EulerAncestral;
+			SDSamplerType samplerType = SDSamplerType.Euler;
 			int step = 20;
 			float cfg = 7.0f;
 			long seed = 0;

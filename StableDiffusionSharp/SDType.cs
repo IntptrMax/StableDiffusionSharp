@@ -28,4 +28,11 @@
 		FLUX,
 	}
 
+	public enum TimestepSpacing
+	{
+		Linspace,
+		Leading,
+		Trailing,
+	}
+
 }
