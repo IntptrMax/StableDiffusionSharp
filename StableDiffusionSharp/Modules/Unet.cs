@@ -38,7 +38,7 @@ namespace StableDiffusionSharp.Modules
 				long batch_size = input_shape[0];
 				long sequence_length = input_shape[1];
 
-				long[] interim_shape = [batch_size, -1, n_heads_, d_head];
+				long[] interim_shape = new long[] { batch_size, -1, n_heads_, d_head };
 				Tensor q = to_q.forward(x);
 				Tensor k = to_k.forward(y);
 				Tensor v = to_v.forward(y);
@@ -190,7 +190,7 @@ namespace StableDiffusionSharp.Modules
 					x = proj_in.forward(x);
 				}
 
-				x = x.view([n, c, h * w]);
+				x = x.view(new long[] { n, c, h * w });
 				x = x.transpose(-1, -2);
 
 				if (use_linear)
@@ -208,7 +208,7 @@ namespace StableDiffusionSharp.Modules
 					x = proj_out.forward(x);
 				}
 				x = x.transpose(-1, -2);
-				x = x.view([n, c, h, w]);
+				x = x.view(new long[] { n, c, h, w });
 				if (!use_linear)
 				{
 					x = proj_out.forward(x);
@@ -241,7 +241,7 @@ namespace StableDiffusionSharp.Modules
 		}
 		public override Tensor forward(Tensor x)
 		{
-			var output = functional.interpolate(x, scale_factor: [2.0, 2.0], mode: InterpolationMode.Nearest);
+			var output = functional.interpolate(x, scale_factor: new double[] { 2.0, 2.0 }, mode: InterpolationMode.Nearest);
 			if (with_conv && conv is not null)
 			{
 				output = conv.forward(output);
@@ -359,19 +359,19 @@ namespace StableDiffusionSharp.Modules
 			public UNet(int model_channels, int in_channels, int[]? channel_mult = null, int num_res_blocks = 2, int num_atten_blocks = 1, int context_dim = 768, int num_heads = 8, float dropout = 0.0f, bool use_timestep = true, Device? device = null, ScalarType? dtype = null) : base(nameof(UNet))
 			{
 				bool mask = false;
-				channel_mult = channel_mult ?? [1, 2, 4, 4];
+				channel_mult = channel_mult ?? new int[] { 1, 2, 4, 4 };
 
 				ch = model_channels;
 				time_embed_dim = model_channels * 4;
 				this.in_channels = in_channels;
 				this.use_timestep = use_timestep;
 
-				List<int> input_block_channels = [model_channels];
+				List<int> input_block_channels = new List<int> { model_channels };
 
 				if (use_timestep)
 				{
 					// timestep embedding
-					time_embed = Sequential([Linear(model_channels, time_embed_dim, device: device, dtype: dtype), SiLU(), Linear(time_embed_dim, time_embed_dim, device: device, dtype: dtype)]);
+					time_embed = Sequential(new Module<Tensor, Tensor>[] { Linear(model_channels, time_embed_dim, device: device, dtype: dtype), SiLU(), Linear(time_embed_dim, time_embed_dim, device: device, dtype: dtype) });
 				}
 
 				// downsampling
@@ -462,7 +462,7 @@ namespace StableDiffusionSharp.Modules
 					foreach (TimestepEmbedSequential layers in output_blocks)
 					{
 						Tensor index = skip_connections.Last();
-						x = cat([x, index], 1);
+						x = cat(new Tensor[] { x, index }, 1);
 						skip_connections.RemoveAt(skip_connections.Count - 1);
 						x = layers.forward(x, context, time);
 					}
@@ -528,7 +528,7 @@ namespace StableDiffusionSharp.Modules
 
 			public UNet(int model_channels, int in_channels, int[]? channel_mult = null, int num_res_blocks = 2, int context_dim = 768, int adm_in_channels = 2816, int num_heads = 20, float dropout = 0.0f, bool use_timestep = true, Device? device = null, ScalarType? dtype = null) : base(nameof(SDUnet))
 			{
-				channel_mult = channel_mult ?? [1, 2, 4];
+				channel_mult = channel_mult ?? new int[] { 1, 2, 4 };
 
 				ch = model_channels;
 				time_embed_dim = model_channels * 4;
@@ -538,7 +538,7 @@ namespace StableDiffusionSharp.Modules
 				bool useLinear = true;
 				bool mask = false;
 
-				List<int> input_block_channels = [model_channels];
+				List<int> input_block_channels = new List<int> { model_channels };
 
 				if (use_timestep)
 				{
@@ -590,10 +590,10 @@ namespace StableDiffusionSharp.Modules
 				{
 					int dim = 512;
 					Tensor embed = time_embed.forward(time);
-					Tensor time_ids = tensor(new float[] { dim, dim, 0, 0, dim, dim }, embed.dtype, embed.device).repeat([2, 1]);
+					Tensor time_ids = tensor(new float[] { dim, dim, 0, 0, dim, dim }, embed.dtype, embed.device).repeat(new long[] { 2, 1 });
 					Tensor time_embeds = get_timestep_embedding(time_ids.flatten(), dim / 2, true, 0, 1);
-					time_embeds = time_embeds.reshape([2, -1]);
-					y = cat([y, time_embeds], dim: -1);
+					time_embeds = time_embeds.reshape(new long[] { 2, -1 });
+					y = cat(new Tensor[] { y, time_embeds }, dim: -1);
 					Tensor label_embed = label_emb.forward(y.to(embed.dtype, embed.device));
 					embed = embed + label_embed;
 
@@ -607,7 +607,7 @@ namespace StableDiffusionSharp.Modules
 					foreach (TimestepEmbedSequential layers in output_blocks)
 					{
 						Tensor index = skip_connections.Last();
-						x = cat([x, index], 1);
+						x = cat(new Tensor[] { x, index }, 1);
 						skip_connections.RemoveAt(skip_connections.Count - 1);
 						x = layers.forward(x, context, embed);
 					}
@@ -685,12 +685,12 @@ namespace StableDiffusionSharp.Modules
 				emb = scale * emb;
 
 				// concat sine and cosine embeddings
-				emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim: -1);
+				emb = torch.cat(new Tensor[] { torch.sin(emb), torch.cos(emb) }, dim: -1);
 
 				// flip sine and cosine embeddings
 				if (flip_sin_to_cos)
 				{
-					emb = torch.cat([emb[.., half_dim..], emb[.., ..half_dim]], dim: -1);
+					emb = torch.cat(new Tensor[] { emb[.., half_dim..], emb[.., ..half_dim] }, dim: -1);
 				}
 
 				// zero pad

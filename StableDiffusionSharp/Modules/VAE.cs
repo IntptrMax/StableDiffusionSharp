@@ -126,7 +126,7 @@ namespace StableDiffusionSharp.Modules
 			{
 				if (with_conv && conv != null)
 				{
-					long[] pad = [0, 1, 0, 1];
+					long[] pad = new long[] { 0, 1, 0, 1 };
 					x = functional.pad(x, pad, mode: PaddingModes.Constant, value: 0);
 					x = conv.forward(x);
 				}
@@ -153,7 +153,7 @@ namespace StableDiffusionSharp.Modules
 			}
 			public override Tensor forward(Tensor x)
 			{
-				var output = functional.interpolate(x, scale_factor: [2.0, 2.0], mode: InterpolationMode.Nearest);
+				var output = functional.interpolate(x, scale_factor: new double[] { 2.0, 2.0 }, mode: InterpolationMode.Nearest);
 				if (with_conv && conv != null)
 				{
 					output = conv.forward(output);
@@ -180,7 +180,7 @@ namespace StableDiffusionSharp.Modules
 			public VAEEncoder(int ch = 128, int[]? ch_mult = null, int num_res_blocks = 2, int in_channels = 3, int z_channels = 16, bool double_z = true, Device? device = null, ScalarType? dtype = null) : base(nameof(VAEEncoder))
 			{
 				this.double_z = double_z;
-				ch_mult ??= [1, 2, 4, 4];
+				ch_mult ??= new int[] { 1, 2, 4, 4 };
 				num_resolutions = ch_mult.Length;
 				this.num_res_blocks = num_res_blocks;
 
@@ -188,7 +188,8 @@ namespace StableDiffusionSharp.Modules
 				conv_in = Conv2d(in_channels, ch, kernel_size: 3, stride: 1, padding: 1, device: device, dtype: dtype);
 
 				// Downsampling layers
-				in_ch_mult = [1, .. ch_mult];
+				in_ch_mult = new List<int> { 1 };
+				in_ch_mult.AddRange(ch_mult);
 				down = Sequential();
 
 				block_in = ch * in_ch_mult[0];
@@ -267,7 +268,7 @@ namespace StableDiffusionSharp.Modules
 
 			public VAEDecoder(int ch = 128, int out_ch = 3, int[]? ch_mult = null, int num_res_blocks = 2, int resolution = 256, int z_channels = 16, Device? device = null, ScalarType? dtype = null) : base(nameof(VAEDecoder))
 			{
-				ch_mult ??= [1, 2, 4, 4];
+				ch_mult ??= new int[] { 1, 2, 4, 4 };
 				num_resolutions = ch_mult.Length;
 				this.num_res_blocks = num_res_blocks;
 				int block_in = ch * ch_mult[num_resolutions - 1];
@@ -378,33 +379,5 @@ namespace StableDiffusionSharp.Modules
 				return first_stage_model.forward(input);
 			}
 		}
-
-		private static long GetVideoCardMemory()
-		{
-			if (!cuda.is_available())
-			{
-				return 0;
-			}
-			else
-			{
-				using (var factory = new SharpDX.DXGI.Factory1())
-				{
-					var adapter = factory.Adapters[0];
-					using (var adapter3 = adapter.QueryInterface<SharpDX.DXGI.Adapter3>())
-					{
-						if (adapter3 == null)
-						{
-							throw new ArgumentException($"Adapter {adapter.Description.Description} not support");
-						}
-						var memoryInfo = adapter3.QueryVideoMemoryInfo(0, SharpDX.DXGI.MemorySegmentGroup.Local);
-						long totalVRAM = adapter.Description.DedicatedVideoMemory;
-						long usedVRAM = memoryInfo.CurrentUsage;
-						long freeVRAM = memoryInfo.Budget - usedVRAM;
-						return freeVRAM;
-					}
-				}
-			}
-		}
-
 	}
 }

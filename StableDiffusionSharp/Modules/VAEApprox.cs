@@ -75,10 +75,10 @@ namespace StableDiffusionSharp.Modules
 			using (NewDisposeScope())
 			{
 				int extra = 11;
-				x = functional.interpolate(x, [x.shape[2] * 2, x.shape[3] * 2]);
+				x = functional.interpolate(x, new long[] { x.shape[2] * 2, x.shape[3] * 2 });
 				x = functional.pad(x, (extra, extra, extra, extra));
 
-				foreach (var layer in ModuleList([conv1, conv2, conv3, conv4, conv5, conv6, conv7, conv8]))
+				foreach (var layer in ModuleList(new Conv2d[] { conv1, conv2, conv3, conv4, conv5, conv6, conv7, conv8 }))
 				{
 					x = layer.forward(x);
 					x = functional.leaky_relu(x, 0.1);

@@ -122,7 +122,7 @@ namespace StableDiffusionSharp.Sampler
 
 		private static Tensor append_zero(Tensor x)
 		{
-			return torch.cat([x, x.new_zeros([1])]);
+			return torch.cat(new Tensor[] { x, x.new_zeros(1) });
 		}
 	}
 }

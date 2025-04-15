@@ -1,6 +1,5 @@
 ﻿using Microsoft.ML.Tokenizers;
 using System.Reflection;
-using TorchSharp;
 using static TorchSharp.torch;
 
 namespace StableDiffusionSharp.Modules

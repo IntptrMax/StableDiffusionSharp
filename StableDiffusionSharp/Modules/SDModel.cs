@@ -75,6 +75,7 @@ namespace StableDiffusionSharp.Modules
 
 		public virtual void LoadModel(string modelPath, string vaeModelPath, string vocabPath = @".\models\clip\vocab.json", string mergesPath = @".\models\clip\merges.txt")
 		{
+			is_loaded = false;
 			ModelType modelType = ModelLoader.ModelLoader.GetModelType(modelPath);
 
 			cliper = modelType switch
@@ -142,8 +143,8 @@ namespace StableDiffusionSharp.Modules
 				int half = dim / 2;
 				var freqs = torch.pow(max_period, -torch.arange(0, half, dtype: torch.float32) / half);
 				var x = timestep * freqs.unsqueeze(0);
-				x = torch.cat([x, x]);
-				return torch.cat([torch.cos(x), torch.sin(x)], dim: -1);
+				x = torch.cat(new Tensor[] { x, x });
+				return torch.cat(new Tensor[] { torch.cos(x), torch.sin(x) }, dim: -1);
 			}
 		}
 
@@ -159,10 +160,10 @@ namespace StableDiffusionSharp.Modules
 					(Tensor cond_context, Tensor cond_pooled) = cliper.forward(cond_tokens, clip_skip);
 					Tensor uncond_tokens = tokenizer.Tokenize(nprompt).to(device);
 					(Tensor uncond_context, Tensor uncond_pooled) = cliper.forward(uncond_tokens, clip_skip);
-					Tensor context = cat([cond_context, uncond_context]);
+					Tensor context = cat(new Tensor[] { cond_context, uncond_context });
 					tempPromptHash = (prompt + nprompt).GetHashCode();
 					tempTextContext = context;
-					tempPooled = cat([cond_pooled, uncond_pooled]);
+					tempPooled = cat(new Tensor[] { cond_pooled, uncond_pooled });
 					tempTextContext = tempTextContext.MoveToOuterDisposeScope();
 					tempPooled = tempPooled.MoveToOuterDisposeScope();
 				}
@@ -212,7 +213,7 @@ namespace StableDiffusionSharp.Modules
 				(Tensor context, Tensor vector) = Clip(prompt, nprompt, clip_skip);
 				using var _ = NewDisposeScope();
 				Console.WriteLine("Getting latents......");
-				Tensor latents = randn([1, 4, height, width]).to(dtype, device);
+				Tensor latents = randn(new long[] { 1, 4, height, width }).to(dtype, device);
 
 				BasicSampler sampler = samplerType switch
 				{

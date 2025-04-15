@@ -80,7 +80,7 @@ namespace StableDiffusionSharp.Modules
 				private readonly Parameter position_ids;
 				public CLIPTextEmbeddings(long n_vocab, long n_embd, long n_token, Device? device = null, ScalarType? dtype = null) : base(nameof(CLIPTextEmbeddings))
 				{
-					position_ids = Parameter(zeros(size: [1, n_token], device: device, dtype: dtype));
+					position_ids = Parameter(zeros(size: new long[] { 1, n_token }, device: device, dtype: dtype));
 					token_embedding = Embedding(n_vocab, n_embd, device: device, dtype: dtype);
 					position_embedding = Embedding(n_token, n_embd, device: device, dtype: dtype);
 					RegisterComponents();
@@ -269,8 +269,8 @@ namespace StableDiffusionSharp.Modules
 			public ViT_bigG_Clip(long n_vocab = 49408, long n_token = 77, long num_layers = 32, long n_heads = 20, long embed_dim = 1280, long intermediate_size = 1280 * 4, Device? device = null, ScalarType? dtype = null) : base(nameof(ViT_bigG_Clip))
 			{
 				token_embedding = Embedding(n_vocab, embed_dim, device: device, dtype: dtype);
-				positional_embedding = Parameter(zeros(size: [n_token, embed_dim], device: device, dtype: dtype));
-				text_projection = Parameter(zeros(size: [embed_dim, embed_dim], device: device, dtype: dtype));
+				positional_embedding = Parameter(zeros(size: new long[] { n_token, embed_dim }, device: device, dtype: dtype));
+				text_projection = Parameter(zeros(size: new long[] { embed_dim, embed_dim }, device: device, dtype: dtype));
 				transformer = new Transformer(num_layers, embed_dim, n_heads, intermediate_size, Activations.GELU, device: device, dtype: dtype);
 				ln_final = LayerNorm(embed_dim, device: device, dtype: dtype);
 				RegisterComponents();
@@ -394,8 +394,8 @@ namespace StableDiffusionSharp.Modules
 				public MultiheadAttention(long embed_dim, long heads, Device? device = null, ScalarType? dtype = null) : base(nameof(MultiheadAttention))
 				{
 					this.heads = heads;
-					in_proj_weight = Parameter(zeros([3 * embed_dim, embed_dim], device: device, dtype: dtype));
-					in_proj_bias = Parameter(zeros([3 * embed_dim], device: device, dtype: dtype));
+					in_proj_weight = Parameter(zeros(new long[] { 3 * embed_dim, embed_dim }, device: device, dtype: dtype));
+					in_proj_bias = Parameter(zeros(new long[] { 3 * embed_dim }, device: device, dtype: dtype));
 					out_proj = Linear(embed_dim, embed_dim, hasBias: true, device: device, dtype: dtype);
 
 					RegisterComponents();
@@ -476,7 +476,7 @@ namespace StableDiffusionSharp.Modules
 				{
 					Device device = cond_stage_model.parameters().First().device;
 					long padLength = n_token - token.shape[1];
-					Tensor token1 = functional.pad(token, [0, padLength, 0, 0], value: endToken);
+					Tensor token1 = functional.pad(token, new long[] { 0, padLength, 0, 0 }, value: endToken);
 					return (cond_stage_model.forward(token1, num_skip, true).MoveToOuterDisposeScope(), zeros(1).MoveToOuterDisposeScope());
 				}
 			}
@@ -516,13 +516,13 @@ namespace StableDiffusionSharp.Modules
 					using (NewDisposeScope())
 					{
 						long padLength = n_token - token.shape[1];
-						Tensor token1 = functional.pad(token, [0, padLength, 0, 0], value: endToken);
-						Tensor token2 = functional.pad(token, [0, padLength, 0, 0]);
+						Tensor token1 = functional.pad(token, new long[] { 0, padLength, 0, 0 }, value: endToken);
+						Tensor token2 = functional.pad(token, new long[] { 0, padLength, 0, 0 });
 
 						Tensor vit_l_result = ((ViT_L_Clip)embedders[0]).forward(token1, 1, false);
 						Tensor vit_bigG_result = ((Model)embedders[1]).forward(token2, 1, false, false);
 						Tensor vit_bigG_vec = ((Model)embedders[1]).forward(token2, 0, false, true);
-						Tensor crossattn = cat([vit_l_result, vit_bigG_result], -1);
+						Tensor crossattn = cat(new Tensor[] { vit_l_result, vit_bigG_result }, -1);
 						return (crossattn.MoveToOuterDisposeScope(), vit_bigG_vec.MoveToOuterDisposeScope());
 					}
 				}

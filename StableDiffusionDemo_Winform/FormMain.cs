@@ -39,7 +39,11 @@ namespace StableDiffusionDemo_Winform
 				SDScalarType scalarType = ComboBox_Precition.SelectedIndex == 0 ? SDScalarType.Float16 : SDScalarType.Float32;
 				Task.Run(() =>
 				{
-					base.Invoke(() => Button_ModelLoad.Enabled = false);
+					base.Invoke(() =>
+					{
+						Button_ModelLoad.Enabled = false;
+						Button_Generate.Enabled = false;
+					});
 					sd = new StableDiffusion(deviceType, scalarType);
 					sd.StepProgress += Sd_StepProgress;
 					sd.LoadModel(modelPath, vaeModelPath);

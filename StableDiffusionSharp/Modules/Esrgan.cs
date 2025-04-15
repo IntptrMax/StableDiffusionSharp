@@ -53,10 +53,10 @@ namespace StableDiffusionSharp.Modules
 				using (NewDisposeScope())
 				{
 					Tensor x1 = lrelu.forward(conv1.forward(x));
-					Tensor x2 = lrelu.forward(conv2.forward(cat([x, x1], 1)));
-					Tensor x3 = lrelu.forward(conv3.forward(cat([x, x1, x2], 1)));
-					Tensor x4 = lrelu.forward(conv4.forward(cat([x, x1, x2, x3], 1)));
-					Tensor x5 = conv5.forward(cat([x, x1, x2, x3, x4], 1));
+					Tensor x2 = lrelu.forward(conv2.forward(cat(new Tensor[] { x, x1 }, 1)));
+					Tensor x3 = lrelu.forward(conv3.forward(cat(new Tensor[] { x, x1, x2 }, 1)));
+					Tensor x4 = lrelu.forward(conv4.forward(cat(new Tensor[] { x, x1, x2, x3 }, 1)));
+					Tensor x5 = conv5.forward(cat(new Tensor[] { x, x1, x2, x3, x4 }, 1));
 					// Empirically, we use 0.2 to scale the residual for better performance
 					return (x5 * 0.2 + x).MoveToOuterDisposeScope();
 				}
@@ -153,8 +153,8 @@ namespace StableDiffusionSharp.Modules
 					Tensor body_feat = conv_body.forward(body.forward(feat));
 					feat = feat + body_feat;
 					// upsample
-					feat = lrelu.forward(conv_up1.forward(functional.interpolate(feat, scale_factor: [2, 2], mode: InterpolationMode.Nearest)));
-					feat = lrelu.forward(conv_up2.forward(functional.interpolate(feat, scale_factor: [2, 2], mode: InterpolationMode.Nearest)));
+					feat = lrelu.forward(conv_up1.forward(functional.interpolate(feat, scale_factor: new double[] { 2, 2 }, mode: InterpolationMode.Nearest)));
+					feat = lrelu.forward(conv_up2.forward(functional.interpolate(feat, scale_factor: new double[] { 2, 2 }, mode: InterpolationMode.Nearest)));
 					Tensor @out = conv_last.forward(lrelu.forward(conv_hr.forward(feat)));
 					return @out.MoveToOuterDisposeScope();
 				}
