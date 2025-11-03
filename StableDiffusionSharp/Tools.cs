@@ -21,7 +21,7 @@ namespace StableDiffusionSharp
 		public static MagickImage GetImageFromTensor(Tensor tensor)
 		{
 			MemoryStream memoryStream = new MemoryStream();
-			torchvision.io.write_png(tensor.cpu(), memoryStream);
+			torchvision.io.write_png(tensor.to(CPU), memoryStream);
 			memoryStream.Position = 0;
 			return new MagickImage(memoryStream, MagickFormat.Png);
 		}

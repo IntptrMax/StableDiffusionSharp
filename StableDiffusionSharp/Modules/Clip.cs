@@ -32,6 +32,17 @@ namespace StableDiffusionSharp.Modules
 				return transformer.forward(token, num_skip, with_final_ln);
 			}
 
+			protected override void Dispose(bool disposing)
+			{
+				if (disposing)
+				{
+					// Dispose of any resources if necessary
+					transformer?.Dispose();
+				}
+				ClearModules();
+				base.Dispose(disposing);
+			}
+
 			private class CLIPTextModel : Module<Tensor, long, bool, Tensor>
 			{
 				private readonly CLIPTextTransformer text_model;
@@ -43,6 +54,15 @@ namespace StableDiffusionSharp.Modules
 				public override Tensor forward(Tensor x, long num_skip, bool with_final_ln)
 				{
 					return text_model.forward(x, num_skip, with_final_ln);
+				}
+
+				protected override void Dispose(bool disposing)
+				{
+					if (disposing)
+					{
+						text_model?.Dispose();
+					}
+					base.Dispose(disposing);
 				}
 			}
 
@@ -71,6 +91,16 @@ namespace StableDiffusionSharp.Modules
 					}
 					return x;
 				}
+				protected override void Dispose(bool disposing)
+				{
+					if (disposing)
+					{
+						embeddings?.Dispose();
+						encoder?.Dispose();
+						final_layer_norm?.Dispose();
+					}
+					base.Dispose(disposing);
+				}
 			}
 
 			private class CLIPTextEmbeddings : Module<Tensor, Tensor>
@@ -89,6 +119,17 @@ namespace StableDiffusionSharp.Modules
 				public override Tensor forward(Tensor tokens)
 				{
 					return token_embedding.forward(tokens) + position_embedding.forward(position_ids.@long());
+				}
+
+				protected override void Dispose(bool disposing)
+				{
+					if (disposing)
+					{
+						token_embedding?.Dispose();
+						position_embedding?.Dispose();
+						position_ids?.Dispose();
+					}
+					base.Dispose(disposing);
 				}
 			}
 
@@ -113,6 +154,18 @@ namespace StableDiffusionSharp.Modules
 					x += self_attn.forward(layer_norm1.forward(x));
 					x += mlp.forward(layer_norm2.forward(x));
 					return x;
+				}
+
+				protected override void Dispose(bool disposing)
+				{
+					if (disposing)
+					{
+						layer_norm1?.Dispose();
+						layer_norm2?.Dispose();
+						self_attn?.Dispose();
+						mlp?.Dispose();
+					}
+					base.Dispose(disposing);
 				}
 			}
 
@@ -154,6 +207,16 @@ namespace StableDiffusionSharp.Modules
 					x = fc2.forward(x);
 					return x;
 				}
+
+				protected override void Dispose(bool disposing)
+				{
+					if (disposing)
+					{
+						fc1?.Dispose();
+						fc2?.Dispose();
+					}
+					base.Dispose(disposing);
+				}
 			}
 
 			private class CLIPAttention : Module<Tensor, Tensor>
@@ -177,19 +240,30 @@ namespace StableDiffusionSharp.Modules
 
 				public override Tensor forward(Tensor x)
 				{
-					using (var _ = NewDisposeScope())
+					using var _ = NewDisposeScope();
+					Tensor q = q_proj.forward(x);
+					Tensor k = k_proj.forward(x);
+					Tensor v = v_proj.forward(x);
+					Tensor output = attention(q, k, v, heads);
+					//TensorInfo output = self_atten(to_q, to_k, to_v, this.heads);
+					return out_proj.forward(output).MoveToOuterDisposeScope();
+				}
+
+				protected override void Dispose(bool disposing)
+				{
+					if (disposing)
 					{
-						Tensor q = q_proj.forward(x);
-						Tensor k = k_proj.forward(x);
-						Tensor v = v_proj.forward(x);
-						Tensor output = attention(q, k, v, heads);
-						//TensorInfo output = self_atten(to_q, to_k, to_v, this.heads);
-						return out_proj.forward(output).MoveToOuterDisposeScope();
+						q_proj?.Dispose();
+						k_proj?.Dispose();
+						v_proj?.Dispose();
+						out_proj?.Dispose();
 					}
+					base.Dispose(disposing);
 				}
 
 				private static Tensor self_atten(Tensor q, Tensor k, Tensor v, long heads)
 				{
+					using var _ = NewDisposeScope();
 					long[] input_shape = q.shape;
 					long batch_size = q.shape[0];
 					long sequence_length = q.shape[1];
@@ -200,22 +274,23 @@ namespace StableDiffusionSharp.Modules
 					k = k.view(interim_shape).transpose(1, 2);
 					v = v.view(interim_shape).transpose(1, 2);
 
-					var weight = matmul(q, k.transpose(-1, -2));
-					var mask = ones_like(weight).triu(1).to(@bool);
+					Tensor weight = matmul(q, k.transpose(-1, -2));
+					Tensor mask = ones_like(weight).triu(1).to(@bool);
 					weight.masked_fill_(mask, float.NegativeInfinity);
 
 					weight = weight / (float)Math.Sqrt(d_head);
 					weight = functional.softmax(weight, dim: -1);
 
-					var output = matmul(weight, v);
+					Tensor output = matmul(weight, v);
 					output = output.transpose(1, 2);
 					output = output.reshape(input_shape);
-					return output;
+					return output.MoveToOuterDisposeScope();
 				}
 
 				// Convenience wrapper around a basic attention operation
 				private static Tensor attention(Tensor q, Tensor k, Tensor v, long heads)
 				{
+					using var _ = NewDisposeScope();
 					long b = q.shape[0];
 					long dim_head = q.shape[2];
 					dim_head /= heads;
@@ -225,7 +300,7 @@ namespace StableDiffusionSharp.Modules
 					Tensor output = functional.scaled_dot_product_attention(q, k, v, is_casual: true);
 					output = output.transpose(1, 2);
 					output = output.view(b, -1, heads * dim_head);
-					return output;
+					return output.MoveToOuterDisposeScope();
 				}
 			}
 
@@ -253,12 +328,24 @@ namespace StableDiffusionSharp.Modules
 
 					return x;
 				}
+
+				protected override void Dispose(bool disposing)
+				{
+					if (disposing)
+					{
+						foreach (var layer in layers)
+						{
+							layer?.Dispose();
+						}
+					}
+					base.Dispose(disposing);
+				}
 			}
 		}
 
 		private class ViT_bigG_Clip : Module<Tensor, int, bool, bool, Tensor>
 		{
-			private readonly int adm_in_channels;
+			//private readonly int adm_in_channels;
 
 			private readonly Embedding token_embedding;
 			private readonly Parameter positional_embedding;
@@ -278,22 +365,35 @@ namespace StableDiffusionSharp.Modules
 
 			public override Tensor forward(Tensor x, int num_skip, bool with_final_ln, bool return_pooled)
 			{
-				using (NewDisposeScope())
+				using var _ = NewDisposeScope();
+
+				Tensor input_ids = x;
+				x = token_embedding.forward(x) + positional_embedding;
+				x = transformer.forward(x, num_skip);
+				if (with_final_ln || return_pooled)
 				{
-					Tensor input_ids = x;
-					x = token_embedding.forward(x) + positional_embedding;
-					x = transformer.forward(x, num_skip);
-					if (with_final_ln || return_pooled)
-					{
-						x = ln_final.forward(x);
-					}
-					if (return_pooled)
-					{
-						x = x[torch.arange(x.shape[0], device: x.device), input_ids.to(type: ScalarType.Int32, device: x.device).argmax(dim: -1)];
-						x = functional.linear(x, text_projection.transpose(0, 1));
-					}
-					return x.MoveToOuterDisposeScope();
+					x = ln_final.forward(x);
 				}
+				if (return_pooled)
+				{
+					x = x[torch.arange(x.shape[0], device: x.device), input_ids.to(type: ScalarType.Int32, device: x.device).argmax(dim: -1)];
+					x = functional.linear(x, text_projection.transpose(0, 1));
+				}
+				return x.MoveToOuterDisposeScope();
+			}
+
+			protected override void Dispose(bool disposing)
+			{
+				if (disposing)
+				{
+					token_embedding?.Dispose();
+					positional_embedding?.Dispose();
+					text_projection?.Dispose();
+					transformer?.Dispose();
+					ln_final?.Dispose();
+					ClearModules();
+				}
+				base.Dispose(disposing);
 			}
 
 			private class Transformer : Module<Tensor, int, Tensor>
@@ -457,13 +557,13 @@ namespace StableDiffusionSharp.Modules
 			}
 		}
 
-		internal class SDCliper : Module<Tensor, long, (Tensor, Tensor)>
+		internal class SD1_5Cliper : Cliper
 		{
 			private readonly ViT_L_Clip cond_stage_model;
 			private readonly long n_token;
 			private readonly long endToken;
 
-			public SDCliper(long n_vocab = 49408, long n_token = 77, long num_layers = 12, long n_heads = 12, long embed_dim = 768, long intermediate_size = 768 * 4, long endToken = 49407, Device? device = null, ScalarType? dtype = null) : base(nameof(SDCliper))
+			public SD1_5Cliper(long n_vocab = 49408, long n_token = 77, long num_layers = 12, long n_heads = 12, long embed_dim = 768, long intermediate_size = 768 * 4, long endToken = 49407, Device? device = null, ScalarType? dtype = null) 
 			{
 				this.n_token = n_token;
 				this.endToken = endToken;
@@ -472,20 +572,28 @@ namespace StableDiffusionSharp.Modules
 			}
 			public override (Tensor, Tensor) forward(Tensor token, long num_skip)
 			{
-				using (NewDisposeScope())
+				using var _ = NewDisposeScope();
+				Device device = cond_stage_model.parameters().First().device;
+				long padLength = n_token - token.shape[1];
+				Tensor token1 = functional.pad(token, new long[] { 0, padLength, 0, 0 }, value: endToken);
+				return (cond_stage_model.forward(token1, num_skip, true).MoveToOuterDisposeScope(), zeros(1).MoveToOuterDisposeScope());
+			}
+
+			protected override void Dispose(bool disposing)
+			{
+				if (disposing)
 				{
-					Device device = cond_stage_model.parameters().First().device;
-					long padLength = n_token - token.shape[1];
-					Tensor token1 = functional.pad(token, new long[] { 0, padLength, 0, 0 }, value: endToken);
-					return (cond_stage_model.forward(token1, num_skip, true).MoveToOuterDisposeScope(), zeros(1).MoveToOuterDisposeScope());
+					cond_stage_model?.Dispose();
+					ClearModules();
 				}
+				base.Dispose(disposing);
 			}
 		}
 
-		internal class SDXLCliper : Module<Tensor, long, (Tensor, Tensor)>
+		internal class SDXLCliper : Cliper
 		{
 			private readonly Embedders conditioner;
-			public SDXLCliper(long n_vocab = 49408, long n_token = 77, Device? device = null, ScalarType? dtype = null) : base(nameof(SDXLCliper))
+			public SDXLCliper(long n_vocab = 49408, long n_token = 77, Device? device = null, ScalarType? dtype = null)
 			{
 				conditioner = new Embedders(n_token, device: device, dtype: dtype);
 				RegisterComponents();
@@ -496,6 +604,16 @@ namespace StableDiffusionSharp.Modules
 				Device device = conditioner.parameters().First().device;
 				token = token.to(device);
 				return conditioner.forward(token);
+			}
+
+			protected override void Dispose(bool disposing)
+			{
+				if (disposing)
+				{
+					conditioner?.Dispose();
+					ClearModules();
+				}
+				base.Dispose(disposing);
 			}
 
 			private class Embedders : Module<Tensor, (Tensor, Tensor)>
@@ -513,18 +631,29 @@ namespace StableDiffusionSharp.Modules
 				}
 				public override (Tensor, Tensor) forward(Tensor token)
 				{
-					using (NewDisposeScope())
-					{
-						long padLength = n_token - token.shape[1];
-						Tensor token1 = functional.pad(token, new long[] { 0, padLength, 0, 0 }, value: endToken);
-						Tensor token2 = functional.pad(token, new long[] { 0, padLength, 0, 0 });
+					using var _ = NewDisposeScope();
+					long padLength = n_token - token.shape[1];
+					Tensor token1 = functional.pad(token, new long[] { 0, padLength, 0, 0 }, value: endToken);
+					Tensor token2 = functional.pad(token, new long[] { 0, padLength, 0, 0 });
 
-						Tensor vit_l_result = ((ViT_L_Clip)embedders[0]).forward(token1, 1, false);
-						Tensor vit_bigG_result = ((Model)embedders[1]).forward(token2, 1, false, false);
-						Tensor vit_bigG_vec = ((Model)embedders[1]).forward(token2, 0, false, true);
-						Tensor crossattn = cat(new Tensor[] { vit_l_result, vit_bigG_result }, -1);
-						return (crossattn.MoveToOuterDisposeScope(), vit_bigG_vec.MoveToOuterDisposeScope());
+					Tensor vit_l_result = ((ViT_L_Clip)embedders[0]).forward(token1, 1, false);
+					Tensor vit_bigG_result = ((Model)embedders[1]).forward(token2, 1, false, false);
+					Tensor vit_bigG_vec = ((Model)embedders[1]).forward(token2, 0, false, true);
+					Tensor crossattn = cat(new Tensor[] { vit_l_result, vit_bigG_result }, -1);
+					return (crossattn.MoveToOuterDisposeScope(), vit_bigG_vec.MoveToOuterDisposeScope());
+				}
+
+				protected override void Dispose(bool disposing)
+				{
+					if (disposing)
+					{
+						foreach (var embedder in embedders)
+						{
+							embedder?.Dispose();
+						}
+						ClearModules();
 					}
+					base.Dispose(disposing);
 				}
 			}
 
@@ -540,6 +669,25 @@ namespace StableDiffusionSharp.Modules
 				{
 					return model.forward(token, num_skip, with_final_ln, return_pooled);
 				}
+
+				protected override void Dispose(bool disposing)
+				{
+					if (disposing)
+					{
+						model?.Dispose();
+						ClearModules();
+					}
+					base.Dispose(disposing);
+				}
+			}
+		}
+
+
+		public abstract class Cliper : Module<Tensor, long, (Tensor, Tensor)>
+		{
+			public Cliper():base(nameof(Cliper))
+			{
+				
 			}
 		}
 

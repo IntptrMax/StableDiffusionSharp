@@ -94,27 +94,8 @@ namespace StableDiffusionSharp.Sampler
 			}
 		}
 
-
-		public virtual Tensor Step(Tensor model_output, int step_index, Tensor sample, long seed = 0, float s_churn = 0.0f, float s_tmin = 0.0f, float s_tmax = float.PositiveInfinity, float s_noise = 1.0f)
-		{
-			// It is the same as EulerSampler
-			sample = sample.to(model_output.dtype, model_output.device);
-			Generator generator = torch.manual_seed(seed);
-			torch.set_rng_state(generator.get_state());
-			float sigma = Sigmas[step_index].ToSingle();
-			float gamma = s_tmin <= sigma && sigma <= s_tmax ? (float)Math.Min(s_churn / (Sigmas.NumberOfElements - 1f), Math.Sqrt(2.0f) - 1.0f) : 0f;
-			Tensor epsilon = torch.randn_like(model_output) * s_noise;
-			float sigma_hat = sigma * (gamma + 1);
-			if (gamma > 0)
-			{
-				sample = sample + epsilon * (float)Math.Sqrt(Math.Pow(sigma_hat, 2f) - Math.Pow(sigma, 2f));
-			}
-			Tensor pred_original_sample = sample - sigma_hat * model_output;  // to_d and sigma is c_out
-			Tensor derivative = (sample - pred_original_sample) / sigma_hat;
-			float dt = Sigmas[step_index + 1].ToSingle() - sigma_hat;
-			return sample + derivative * dt;
-		}
-
+		public abstract Tensor Step(torch.Tensor model_output, int step_index, torch.Tensor sample, long seed = 0, float s_churn = 0, float s_tmin = 0, float s_tmax = float.PositiveInfinity, float s_noise = 1);			
+		
 		private Tensor GetBetaSchedule(float beta_start, float beta_end, int num_train_timesteps)
 		{
 			return torch.pow(torch.linspace(Math.Pow(beta_start, 0.5), Math.Pow(beta_end, 0.5), num_train_timesteps, ScalarType.Float32), 2);

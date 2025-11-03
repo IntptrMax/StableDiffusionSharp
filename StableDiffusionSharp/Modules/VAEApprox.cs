@@ -74,6 +74,8 @@ namespace StableDiffusionSharp.Modules
 		{
 			using (NewDisposeScope())
 			{
+				Parameter p = this.named_parameters().First().parameter;
+				x = x.to(p.dtype, p.device);
 				int extra = 11;
 				x = functional.interpolate(x, new long[] { x.shape[2] * 2, x.shape[3] * 2 });
 				x = functional.pad(x, (extra, extra, extra, extra));
@@ -85,13 +87,6 @@ namespace StableDiffusionSharp.Modules
 				}
 				return x.MoveToOuterDisposeScope();
 			}
-		}
-
-		public enum SharedModel
-		{
-			SD3,
-			SDXL,
-			SD
 		}
 	}
 }

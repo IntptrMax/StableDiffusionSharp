@@ -4,11 +4,10 @@ using System.Diagnostics;
 using System.Text;
 using TorchSharp;
 using static TorchSharp.torch;
-using static TorchSharp.torch.nn;
 
 namespace StableDiffusionSharp.Modules
 {
-	public class SDModel : IDisposable
+	internal abstract class SDModel : IDisposable
 	{
 		// Default parameters
 		private float linear_start = 0.00085f;
@@ -16,21 +15,10 @@ namespace StableDiffusionSharp.Modules
 		private int num_timesteps_cond = 1;
 		private int timesteps = 1000;
 		internal float scale_factor = 0.18215f;
-		internal int adm_in_channels = 2816;
 
-		// UNet config
-		internal int in_channels = 4;
-		internal int model_channels = 320;
-		internal int context_dim = 768;
-		internal int num_head = 8;
-		internal float dropout = 0.0f;
+		internal string vaeApproxPath;
 
-		// first stage config:
-		internal int embed_dim = 4;
-		internal bool double_z = true;
-		internal int z_channels = 4;
-
-		public class StepEventArgs : EventArgs
+		internal class StepEventArgs : EventArgs
 		{
 			public int CurrentStep { get; }
 			public int TotalSteps { get; }
@@ -50,15 +38,15 @@ namespace StableDiffusionSharp.Modules
 			StepProgress?.Invoke(this, new StepEventArgs(currentStep, totalSteps, vaeApproxImg));
 		}
 
-		internal Module<Tensor, long, (Tensor, Tensor)> cliper;
-		internal Module<Tensor, Tensor, Tensor, Tensor, Tensor> diffusion;
-		private VAE.Decoder decoder;
-		private VAE.Encoder encoder;
-		private Tokenizer tokenizer;
-		private VAEApprox vaeApprox;
+		protected Clip.Cliper cliper;
+		protected UNet.Diffusion diffusion;
+		protected VAE.Decoder decoder;
+		protected VAE.Encoder encoder;
+		protected Tokenizer tokenizer;
+		protected VAEApprox vaeApprox;
 
-		internal Device device;
-		internal ScalarType dtype;
+		protected Device device;
+		protected ScalarType dtype;
 
 		private int tempPromptHash;
 		private Tensor tempTextContext;
@@ -66,40 +54,23 @@ namespace StableDiffusionSharp.Modules
 
 		bool is_loaded = false;
 
-		public SDModel(Device? device = null, ScalarType? dtype = null)
+		public SDModel(float scale_factor, Device? device = null, ScalarType? dtype = null)
 		{
 			torchvision.io.DefaultImager = new torchvision.io.SkiaImager();
+			this.scale_factor = scale_factor;
+
 			this.device = device ?? torch.CPU;
 			this.dtype = dtype ?? torch.float32;
 		}
 
-		public virtual void LoadModel(string modelPath, string vaeModelPath, string vocabPath = @".\models\clip\vocab.json", string mergesPath = @".\models\clip\merges.txt")
+		internal virtual void LoadModel(string modelPath, string vaeModelPath, string vocabPath = @".\models\clip\vocab.json", string mergesPath = @".\models\clip\merges.txt")
 		{
 			is_loaded = false;
-			ModelType modelType = ModelLoader.ModelLoader.GetModelType(modelPath);
 
-			cliper = modelType switch
-			{
-				ModelType.SD1 => new Clip.SDCliper(device: device, dtype: dtype),
-				ModelType.SDXL => new Clip.SDXLCliper(device: device, dtype: dtype),
-				_ => throw new ArgumentException("Invalid model type")
-			};
 			cliper.eval();
-
-			diffusion = modelType switch
-			{
-				ModelType.SD1 => new SDUnet(model_channels, in_channels, num_head, context_dim, dropout, device: device, dtype: dtype),
-				ModelType.SDXL => new SDXLUnet(model_channels, in_channels, num_head, context_dim, adm_in_channels, dropout, device: device, dtype: dtype),
-				_ => throw new ArgumentException("Invalid model type")
-			};
 			diffusion.eval();
-
-			decoder = new VAE.Decoder(embed_dim: embed_dim, z_channels: z_channels, device: device, dtype: dtype);
 			decoder.eval();
-			encoder = new VAE.Encoder(embed_dim: embed_dim, z_channels: z_channels, double_z: double_z, device: device, dtype: dtype);
 			encoder.eval();
-
-			vaeApprox = new VAEApprox(4, device, dtype);
 			vaeApprox.eval();
 
 			vaeModelPath = string.IsNullOrEmpty(vaeModelPath) ? modelPath : vaeModelPath;
@@ -108,14 +79,6 @@ namespace StableDiffusionSharp.Modules
 			diffusion.LoadModel(modelPath);
 			decoder.LoadModel(vaeModelPath, "first_stage_model.");
 			encoder.LoadModel(vaeModelPath, "first_stage_model.");
-
-			string vaeApproxPath = modelType switch
-			{
-				ModelType.SD1 => @".\Models\VAEApprox\vaeapp_sd15.pth",
-				ModelType.SDXL => @".\Models\VAEApprox\xlvaeapp.pth",
-				_ => throw new ArgumentException("Invalid model type")
-			};
-
 			vaeApprox.LoadModel(vaeApproxPath);
 
 			tokenizer = new Tokenizer(vocabPath, mergesPath);
@@ -148,7 +111,7 @@ namespace StableDiffusionSharp.Modules
 			}
 		}
 
-		private (Tensor, Tensor) Clip(string prompt, string nprompt, long clip_skip)
+		internal virtual (Tensor, Tensor) Clip(string prompt, string nprompt, long clip_skip)
 		{
 			CheckModelLoaded();
 			if (tempPromptHash != (prompt + nprompt).GetHashCode())
@@ -181,7 +144,7 @@ namespace StableDiffusionSharp.Modules
 		/// <param name="steps">Step to generate image</param>
 		/// <param name="seed">Random seed for generating image, it will get random when the value is 0</param>
 		/// <param name="cfg">Classifier Free Guidance</param>
-		public virtual ImageMagick.MagickImage TextToImage(string prompt, string nprompt = "", long clip_skip = 0, int width = 512, int height = 512, int steps = 20, long seed = 0, float cfg = 7.0f, SDSamplerType samplerType = SDSamplerType.Euler)
+		internal virtual ImageMagick.MagickImage TextToImage(string prompt, string nprompt = "", long clip_skip = 0, int width = 512, int height = 512, int steps = 20, long seed = 0, float cfg = 7.0f, SDSamplerType samplerType = SDSamplerType.Euler)
 		{
 			CheckModelLoaded();
 
@@ -211,10 +174,10 @@ namespace StableDiffusionSharp.Modules
 				Stopwatch sp = Stopwatch.StartNew();
 				Console.WriteLine("Clip is doing......");
 				(Tensor context, Tensor vector) = Clip(prompt, nprompt, clip_skip);
-				using var _ = NewDisposeScope();
+
+
 				Console.WriteLine("Getting latents......");
 				Tensor latents = randn(new long[] { 1, 4, height, width }).to(dtype, device);
-
 				BasicSampler sampler = samplerType switch
 				{
 					SDSamplerType.Euler => new EulerSampler(timesteps, linear_start, linear_end, num_timesteps_cond),
@@ -228,33 +191,34 @@ namespace StableDiffusionSharp.Modules
 				Console.WriteLine($"begin sampling");
 				for (int i = 0; i < steps; i++)
 				{
-					Tensor approxTensor = vaeApprox.forward(latents);
-					approxTensor = approxTensor * 127.5 + 127.5;
-					approxTensor = approxTensor.clamp(0, 255).@byte().cpu();
-					ImageMagick.MagickImage approxImg = Tools.GetImageFromTensor(approxTensor);
-					OnStepProgress(i + 1, steps, approxImg);
-					Tensor timestep = sampler.Timesteps[i];
-					Tensor time_embedding = GetTimeEmbedding(timestep);
-					Tensor input_latents = sampler.ScaleModelInput(latents, i);
-					input_latents = input_latents.repeat(2, 1, 1, 1);
-					Tensor output = diffusion.forward(input_latents, context, time_embedding, vector);
-					Tensor[] ret = output.chunk(2);
-					Tensor output_cond = ret[0];
-					Tensor output_uncond = ret[1];
-					output = cfg * (output_cond - output_uncond) + output_uncond;
-					latents = sampler.Step(output, i, latents, seed);
+					using (NewDisposeScope())
+					{
+						Tensor approxTensor = vaeApprox.forward(latents);
+						approxTensor = approxTensor * 127.5 + 127.5;
+						approxTensor = approxTensor.clamp(0, 255).@byte().cpu();
+						ImageMagick.MagickImage approxImg = Tools.GetImageFromTensor(approxTensor);
+						OnStepProgress(i + 1, steps, approxImg);
+						Tensor timestep = sampler.Timesteps[i];
+						Tensor time_embedding = GetTimeEmbedding(timestep);
+						Tensor input_latents = sampler.ScaleModelInput(latents, i);
+						input_latents = input_latents.repeat(2, 1, 1, 1);
+						Tensor output = diffusion.forward(input_latents, context, time_embedding, vector);
+						Tensor[] ret = output.chunk(2);
+						Tensor output_cond = ret[0];
+						Tensor output_uncond = ret[1];
+						output = cfg * (output_cond - output_uncond) + output_uncond;
+						latents = sampler.Step(output, i, latents, seed).MoveToOuterDisposeScope();
+					}
 				}
+
 				Console.WriteLine($"end sampling");
 				Console.WriteLine($"begin decoder");
 				latents = latents / scale_factor;
 				Tensor image = decoder.forward(latents);
 				Console.WriteLine($"end decoder");
-
-
-				image = ((image + 0.5) * 255.0f).clamp(0, 255).@byte().cpu();
-
+				Console.WriteLine($"write to image");
+				image = ((image + 1f) / 2f * 255.0f).clamp(0, 255).@byte();
 				ImageMagick.MagickImage img = Tools.GetImageFromTensor(image);
-
 				StringBuilder stringBuilder = new StringBuilder();
 				stringBuilder.AppendLine(prompt);
 				if (!string.IsNullOrEmpty(nprompt))
@@ -270,7 +234,7 @@ namespace StableDiffusionSharp.Modules
 		}
 
 
-		public virtual ImageMagick.MagickImage ImageToImage(ImageMagick.MagickImage orgImage, string prompt, string nprompt = "", long clip_skip = 0, int steps = 20, float strength = 0.75f, long seed = 0, long subSeed = 0, float cfg = 7.0f, SDSamplerType samplerType = SDSamplerType.Euler)
+		internal virtual ImageMagick.MagickImage ImageToImage(ImageMagick.MagickImage orgImage, string prompt, string nprompt = "", long clip_skip = 0, int steps = 20, float strength = 0.75f, long seed = 0, long subSeed = 0, float cfg = 7.0f, SDSamplerType samplerType = SDSamplerType.Euler)
 		{
 			CheckModelLoaded();
 
@@ -314,33 +278,36 @@ namespace StableDiffusionSharp.Modules
 				Console.WriteLine($"begin sampling");
 				for (int i = 0; i < sigma_sched.NumberOfElements - 1; i++)
 				{
-					Tensor approxTensor = vaeApprox.forward(latents);
-					approxTensor = approxTensor * 127.5 + 127.5;
-					approxTensor = approxTensor.clamp(0, 255).@byte().cpu();
-					ImageMagick.MagickImage approxImg = Tools.GetImageFromTensor(approxTensor);
-					OnStepProgress(i + 1, steps, approxImg);
+					using (NewDisposeScope())
+					{
+						Tensor approxTensor = vaeApprox.forward(latents);
+						approxTensor = approxTensor * 127.5 + 127.5;
+						approxTensor = approxTensor.clamp(0, 255).@byte().cpu();
+						ImageMagick.MagickImage approxImg = Tools.GetImageFromTensor(approxTensor);
+						OnStepProgress(i + 1, steps, approxImg);
 
-					int index = steps - t_enc + i - 1;
-					Tensor timestep = sampler.Timesteps[index];
-					Tensor time_embedding = GetTimeEmbedding(timestep);
-					Tensor input_latents = sampler.ScaleModelInput(latents, index);
-					input_latents = input_latents.repeat(2, 1, 1, 1);
-					Tensor output = diffusion.forward(input_latents, context, time_embedding, vector);
-					Tensor[] ret = output.chunk(2);
-					Tensor output_cond = ret[0];
-					Tensor output_uncond = ret[1];
-					Tensor noisePred = cfg * (output_cond - output_uncond) + output_uncond;
-					latents = sampler.Step(noisePred, index, latents, seed);
+						int index = steps - t_enc + i - 1;
+						Tensor timestep = sampler.Timesteps[index];
+						Tensor time_embedding = GetTimeEmbedding(timestep);
+						Tensor input_latents = sampler.ScaleModelInput(latents, index);
+						input_latents = input_latents.repeat(2, 1, 1, 1);
+						Tensor output = diffusion.forward(input_latents, context, time_embedding, vector);
+						Tensor[] ret = output.chunk(2);
+						Tensor output_cond = ret[0];
+						Tensor output_uncond = ret[1];
+						Tensor noisePred = cfg * (output_cond - output_uncond) + output_uncond;
+						latents = sampler.Step(noisePred, index, latents, seed).MoveToOuterDisposeScope();
+					}
 				}
 				Console.WriteLine($"end sampling");
 				Console.WriteLine($"begin decoder");
 				latents = latents / scale_factor;
 				Tensor image = decoder.forward(latents);
 				Console.WriteLine($"end decoder");
+				Console.WriteLine($"write to image");
 
-				sp.Stop();
-				Console.WriteLine($"Total time is: {sp.ElapsedMilliseconds} ms.");
-				image = ((image + 0.5) * 255.0f).clamp(0, 255).@byte().cpu();
+
+				image = ((image + 1f) / 2f * 255.0f).clamp(0, 255).@byte().cpu();
 
 				ImageMagick.MagickImage img = Tools.GetImageFromTensor(image);
 
@@ -352,6 +319,8 @@ namespace StableDiffusionSharp.Modules
 				}
 				stringBuilder.AppendLine($"Steps: {steps}, CFG scale_factor: {cfg}, Seed: {seed}, Size: {img.Width}x{img.Height}, Version: StableDiffusionSharp");
 				img.SetAttribute("parameters", stringBuilder.ToString());
+				sp.Stop();
+				Console.WriteLine($"Total time is: {sp.ElapsedMilliseconds} ms.");
 				return img;
 			}
 		}

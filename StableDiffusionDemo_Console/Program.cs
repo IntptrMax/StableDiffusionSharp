@@ -6,17 +6,17 @@ namespace StableDiffusionDemo_Console
 	{
 		static void Main(string[] args)
 		{
-			string sdModelPath = @".\Chilloutmix.safetensors";
-			string vaeModelPath = @".\vae.safetensors";
+			string sdModelPath = @".\models\checkpoints\realDream_sdxlPony15.safetensors";
+			string vaeModelPath = @".\models\vae\sdxl.vae.safetensors";
 
 			string esrganModelPath = @".\RealESRGAN_x4plus.pth";
 			string i2iPrompt = "High quality, best quality, moon, grass, tree, boat.";
-			string prompt = "cat with blue eyes";
-			string nprompt = "";
+			string prompt = "realistic, best quality, 4k, 8k, trees, beach, moon, stars, boat,";
+			string nprompt = "2d, 3d, cartoon, paintings";
 
 			SDDeviceType deviceType = SDDeviceType.CUDA;
 			SDScalarType scalarType = SDScalarType.Float16;
-			SDSamplerType samplerType = SDSamplerType.Euler;
+			SDSamplerType samplerType = SDSamplerType.EulerAncestral;
 			int step = 20;
 			float cfg = 7.0f;
 			long seed = 0;

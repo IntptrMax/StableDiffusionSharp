@@ -47,6 +47,7 @@ namespace StableDiffusionSharp.Modules
 
 			public override Tensor forward(Tensor x)
 			{
+				using var _ = NewDisposeScope();
 				Tensor hidden = x;
 				hidden = norm1.forward(hidden);
 				hidden = swish.forward(hidden);
@@ -58,7 +59,22 @@ namespace StableDiffusionSharp.Modules
 				{
 					x = nin_shortcut.forward(x);
 				}
-				return x + hidden;
+				return (x + hidden).MoveToOuterDisposeScope();
+			}
+
+			protected override void Dispose(bool disposing)
+			{
+				if (disposing)
+				{
+					conv1?.Dispose();
+					conv2?.Dispose();
+					norm1?.Dispose();
+					norm2?.Dispose();
+					nin_shortcut?.Dispose();
+					swish?.Dispose();
+				}
+				base.ClearModules();
+				base.Dispose(disposing);
 			}
 		}
 
@@ -82,26 +98,39 @@ namespace StableDiffusionSharp.Modules
 
 			public override Tensor forward(Tensor x)
 			{
-				using (NewDisposeScope())
+				using var _ = NewDisposeScope();
+
+				var hidden = norm.forward(x);
+				var q = this.q.forward(hidden);
+				var k = this.k.forward(hidden);
+				var v = this.v.forward(hidden);
+
+				var (b, c, h, w) = (q.size(0), q.size(1), q.size(2), q.size(3));
+
+				q = q.view(b, 1, h * w, c).contiguous();
+				k = k.view(b, 1, h * w, c).contiguous();
+				v = v.view(b, 1, h * w, c).contiguous();
+
+				hidden = functional.scaled_dot_product_attention(q, k, v); // scale_factor is dim ** -0.5 per default
+
+				hidden = hidden.view(b, c, h, w).contiguous();
+				hidden = proj_out.forward(hidden);
+
+				return (x + hidden).MoveToOuterDisposeScope();
+			}
+
+			protected override void Dispose(bool disposing)
+			{
+				if (disposing)
 				{
-					var hidden = norm.forward(x);
-					var q = this.q.forward(hidden);
-					var k = this.k.forward(hidden);
-					var v = this.v.forward(hidden);
-
-					var (b, c, h, w) = (q.size(0), q.size(1), q.size(2), q.size(3));
-
-					q = q.view(b, 1, h * w, c).contiguous();
-					k = k.view(b, 1, h * w, c).contiguous();
-					v = v.view(b, 1, h * w, c).contiguous();
-
-					hidden = functional.scaled_dot_product_attention(q, k, v); // scale_factor is dim ** -0.5 per default
-
-					hidden = hidden.view(b, c, h, w).contiguous();
-					hidden = proj_out.forward(hidden);
-
-					return (x + hidden).MoveToOuterDisposeScope();
+					norm?.Dispose();
+					q?.Dispose();
+					k?.Dispose();
+					v?.Dispose();
+					proj_out?.Dispose();
+					ClearModules();
 				}
+				base.Dispose(disposing);
 			}
 
 		}
@@ -136,6 +165,16 @@ namespace StableDiffusionSharp.Modules
 				}
 				return x;
 			}
+
+			protected override void Dispose(bool disposing)
+			{
+				if (disposing)
+				{
+					conv?.Dispose();
+					ClearModules();
+				}
+				base.Dispose(disposing);
+			}
 		}
 
 		private class Upsample : Module<Tensor, Tensor>
@@ -153,12 +192,22 @@ namespace StableDiffusionSharp.Modules
 			}
 			public override Tensor forward(Tensor x)
 			{
-				var output = functional.interpolate(x, scale_factor: new double[] { 2.0, 2.0 }, mode: InterpolationMode.Nearest);
+				Tensor output = functional.interpolate(x, scale_factor: new double[] { 2.0, 2.0 }, mode: InterpolationMode.Nearest);
 				if (with_conv && conv != null)
 				{
 					output = conv.forward(output);
 				}
 				return output;
+			}
+
+			protected override void Dispose(bool disposing)
+			{
+				if (disposing)
+				{
+					conv?.Dispose();
+					ClearModules();
+				}
+				base.Dispose(disposing);
 			}
 		}
 
@@ -175,7 +224,6 @@ namespace StableDiffusionSharp.Modules
 			private readonly SiLU swish;
 			private readonly int block_in;
 			private readonly bool double_z;
-
 
 			public VAEEncoder(int ch = 128, int[]? ch_mult = null, int num_res_blocks = 2, int in_channels = 3, int z_channels = 16, bool double_z = true, Device? device = null, ScalarType? dtype = null) : base(nameof(VAEEncoder))
 			{
@@ -234,21 +282,31 @@ namespace StableDiffusionSharp.Modules
 
 			public override Tensor forward(Tensor x)
 			{
-				using var _ = NewDisposeScope();
-
 				// Downsampling
-				var h = conv_in.forward(x);
-
-				h = down.forward(h);
-
+				x = conv_in.forward(x);
+				x = down.forward(x);
 				// Middle layers
-				h = mid.forward(h);
-
+				x = mid.forward(x);
 				// Output layers
-				h = norm_out.forward(h);
-				h = swish.forward(h);
-				h = conv_out.forward(h);
-				return h.MoveToOuterDisposeScope();
+				x = norm_out.forward(x);
+				x = swish.forward(x);
+				x = conv_out.forward(x);
+				return x.MoveToOuterDisposeScope();
+			}
+
+			protected override void Dispose(bool disposing)
+			{
+				if (disposing)
+				{
+					conv_in?.Dispose();
+					down?.Dispose();
+					mid?.Dispose();
+					norm_out?.Dispose();
+					conv_out?.Dispose();
+					swish?.Dispose();
+					ClearModules();
+				}
+				base.Dispose(disposing);
 			}
 		}
 
@@ -274,7 +332,7 @@ namespace StableDiffusionSharp.Modules
 				int block_in = ch * ch_mult[num_resolutions - 1];
 
 				int curr_res = resolution / (int)Math.Pow(2, num_resolutions - 1);
-				// z to block_in
+				// x to block_in
 				conv_in = Conv2d(z_channels, block_in, kernel_size: 3, padding: 1, device: device, dtype: dtype);
 
 				// middle
@@ -320,25 +378,40 @@ namespace StableDiffusionSharp.Modules
 				RegisterComponents();
 			}
 
-			public override Tensor forward(Tensor z)
+			public override Tensor forward(Tensor x)
 			{
-				// z to block_in
-				Tensor hidden = conv_in.forward(z);
+				// x to block_in
+				x = conv_in.forward(x);
 
 				// middle
-				hidden = mid.forward(hidden);
+				x = mid.forward(x);
 
 				// upsampling
 				foreach (Module<Tensor, Tensor> md in up.children().Reverse())
 				{
-					hidden = md.forward(hidden);
+					x = md.forward(x);
 				}
 
 				// end
-				hidden = norm_out.forward(hidden);
-				hidden = swish.forward(hidden);
-				hidden = conv_out.forward(hidden);
-				return hidden;
+				x = norm_out.forward(x);
+				x = swish.forward(x);
+				x = conv_out.forward(x);
+				return x;
+			}
+
+			protected override void Dispose(bool disposing)
+			{
+				if (disposing)
+				{
+					conv_in?.Dispose();
+					mid?.Dispose();
+					up?.Dispose();
+					norm_out?.Dispose();
+					conv_out?.Dispose();
+					swish?.Dispose();
+					ClearModules();
+				}
+				base.Dispose(disposing);
 			}
 		}
 
@@ -359,6 +432,16 @@ namespace StableDiffusionSharp.Modules
 				latents = latents.to(dtype, device);
 				return first_stage_model.forward(latents);
 			}
+
+			protected override void Dispose(bool disposing)
+			{
+				if (disposing)
+				{
+					first_stage_model?.Dispose();
+					ClearModules();
+				}
+				base.Dispose(disposing);
+			}
 		}
 
 		internal class Encoder : Module<Tensor, Tensor>
@@ -377,6 +460,16 @@ namespace StableDiffusionSharp.Modules
 				ScalarType dtype = first_stage_model.parameters().First().dtype;
 				input = input.to(dtype, device);
 				return first_stage_model.forward(input);
+			}
+
+			protected override void Dispose(bool disposing)
+			{
+				if (disposing)
+				{
+					first_stage_model?.Dispose();
+					ClearModules();
+				}
+				base.Dispose(disposing);
 			}
 		}
 	}

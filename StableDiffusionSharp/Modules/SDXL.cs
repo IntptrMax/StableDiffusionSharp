@@ -1,28 +1,18 @@
-﻿using TorchSharp;
+﻿using static StableDiffusionSharp.Modules.UNet;
 using static TorchSharp.torch;
 
 namespace StableDiffusionSharp.Modules
 {
-	public class SDXL : SD1
+	internal class SDXL : SDModel
 	{
-		public SDXL(Device? device = null, ScalarType? dtype = null) : base(device, dtype)
+		public SDXL(float scale_factor = 0.13025f, int in_channels = 4, int model_channels = 320, int context_dim = 2048, int num_head = 20, float dropout = 0.0f, int adm_in_channels = 2816, int embed_dim = 4, int z_channels = 4, Device? device = null, bool double_z = true, ScalarType? dtype = null) : base(scale_factor: scale_factor, device: device, dtype: dtype)
 		{
-			torchvision.io.DefaultImager = new torchvision.io.SkiaImager();
-			this.device = device ?? torch.CPU;
-			this.dtype = dtype ?? torch.float32;
-
-			this.scale_factor = 0.13025f;
-
-			this.in_channels = 4;
-			this.model_channels = 320;
-			this.context_dim = 2048;
-			this.num_head = 20;
-			this.dropout = 0.0f;
-			this.adm_in_channels = 2816;
-
-			this.embed_dim = 4;
-			this.double_z = true;
-			this.z_channels = 4;
+			this.cliper = new Clip.SDXLCliper(device: CPU, dtype: ScalarType.Float32);
+			this.diffusion = new SDXLUnet(model_channels, in_channels, num_head, context_dim, adm_in_channels, dropout, device: device, dtype: dtype);
+			this.decoder = new VAE.Decoder(embed_dim: embed_dim, z_channels: z_channels, device: device, dtype: dtype);
+			this.encoder = new VAE.Encoder(embed_dim: embed_dim, z_channels: z_channels, double_z: double_z, device: CPU, dtype: ScalarType.Float32);
+			this.vaeApprox = new VAEApprox(4, device, dtype);
+			this.vaeApproxPath = @".\Models\VAEApprox\xlvaeapp.pth";
 		}
 	}
 }
